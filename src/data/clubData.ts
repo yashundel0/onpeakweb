@@ -70,42 +70,42 @@ export const images = {
 
 export const galleryImages = [
   {
-    src: '/assets/images/Изображение_PNG_2.png',
+    src: '/onpeakweb/assets/images/Изображение_PNG_2.png',
     alt: 'OnPeak padel court with a player under blue lighting',
     span: 'row-span-2',
   },
   {
-    src: '/assets/images/Изображение_PNG_3.png',
+    src: '/onpeakweb/assets/images/Изображение_PNG_3.png',
     alt: 'Football players competing on the OnPeak pitch',
     span: '',
   },
   {
-    src: '/assets/images/Изображение_PNG_4.png',
+    src: '/onpeakweb/assets/images/Изображение_PNG_4.png',
     alt: 'Player relaxing beside the OnPeak football pitch',
     span: '',
   },
   {
-    src: '/assets/images/Изображение_PNG_5.png',
+    src: '/onpeakweb/assets/images/Изображение_PNG_5.png',
     alt: 'Padel player in action inside the OnPeak court',
     span: '',
   },
   {
-    src: '/assets/images/Изображение_PNG_3.png',
+    src: '/onpeakweb/assets/images/Изображение_PNG_3.png',
     alt: 'Football game at OnPeak',
     span: 'row-span-2',
   },
   {
-    src: '/assets/images/Изображение_PNG_5.png',
+    src: '/onpeakweb/assets/images/Изображение_PNG_5.png',
     alt: 'Padel court action at OnPeak',
     span: '',
   },
   {
-    src: '/assets/images/Изображение_PNG_6.png',
+    src: '/onpeakweb/assets/images/Изображение_PNG_6.png',
     alt: 'Padel rackets and ball at OnPeak',
     span: '',
   },
   {
-    src: '/assets/images/Изображение_PNG_4.png',
+    src: '/onpeakweb/assets/images/Изображение_PNG_4.png',
     alt: 'OnPeak club atmosphere beside the pitch',
     span: '',
   },

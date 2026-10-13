@@ -51,7 +51,7 @@ export const images = {
   footballWide: '/onpeakweb/assets/images/Изображение_PNG_3.png',
   footballWideAlt: 'Football players competing on a green pitch',
   padelCourt: '/onpeakweb/assets/images/Изображение_PNG_2.png',
-  padelCourtAlt 'OnPeak padel court with a player ready to play',
+  padelCourtAlt: 'OnPeak padel court with a player ready to play',
   padelAction: '/onpeakweb/assets/images/Изображение_PNG_5.png',
   padelActionAlt: 'Padel player moving across the blue court at OnPeak',
   padelWide: '/onpeakweb/assets/images/Изображение_PNG_5.png',

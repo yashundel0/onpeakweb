@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Menu, X, Calendar } from 'lucide-react';
 import { nav, club } from '@/data/clubData';
 
-const LOGO = '/assets/images/Изображение_PNG_8.png';
+const LOGO = '/onpeakweb/assets/images/Изображение_PNG_8.png';
 
 export default function Header() {
   const [scrolled, setScrolled] = useState(false);

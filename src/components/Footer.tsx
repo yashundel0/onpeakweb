@@ -1,7 +1,7 @@
 import { Instagram, MessageCircle, MapPin } from 'lucide-react';
 import { club, nav, whatsappLink } from '@/data/clubData';
 
-const LOGO = '/assets/images/Изображение_PNG_8.png';
+const LOGO = '/onpeakweb/assets/images/Изображение_PNG_8.png';
 
 export default function Footer() {
   return (

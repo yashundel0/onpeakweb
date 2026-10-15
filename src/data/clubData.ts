@@ -40,6 +40,24 @@ export const nav = [
   { label: 'Contact', href: '#contact' },
 ];
 
+export const locations = [
+  {
+    id: 'jumeirah',
+    name: 'OnPeak Sports Club',
+    address: club.address,
+    city: club.city,
+    googleMaps: club.googleMaps,
+    googleMapsEmbed: club.googleMapsEmbed,
+  },
+  {
+    id: 'al-quoz',
+    name: 'OnPeak Al Quoz',
+    address: '17B Street, Al Quoz First, Al Quoz, Dubai, UAE',
+    city: 'Dubai, UAE',
+    googleMaps: 'https://maps.app.goo.gl/svm8iAksPtHJzhPB9?g_st=ic',
+  },
+];
+
 // Club photos uploaded to public/assets/images. Replace these local paths when new club media is provided.
 export const images = {
   hero: '/onpeakweb/assets/images/Изображение_PNG_2.png',

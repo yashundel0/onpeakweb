@@ -55,6 +55,8 @@ export const locations = [
     address: '17B Street, Al Quoz First, Al Quoz, Dubai, UAE',
     city: 'Dubai, UAE',
     googleMaps: 'https://maps.app.goo.gl/svm8iAksPtHJzhPB9?g_st=ic',
+    googleMapsEmbed:
+      'https://www.google.com/maps?q=5793+RQ7,+Abu+Hanifa+School+for+Basic+Education+for+Boys,+17B+Street,+Al+Quoz+First,+Al+Quoz,+Dubai,+UAE&z=16&output=embed',
   },
 ];
 

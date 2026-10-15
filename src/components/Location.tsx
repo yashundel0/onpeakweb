@@ -1,5 +1,5 @@
 import { MapPin, Navigation, Clock, Mail, Phone } from 'lucide-react';
-import { images, club, locations, whatsappLink } from '@/data/clubData';
+import { club, locations, whatsappLink } from '@/data/clubData';
 
 export default function Location() {
   return (
@@ -25,32 +25,20 @@ export default function Location() {
               key={location.id}
               className={`reveal-${index === 0 ? 'left' : 'right'} overflow-hidden rounded-3xl border border-forest-glow/15 bg-forest-dark/30 transition-all duration-500 hover:border-forest-glow/30 hover:bg-forest-dark/45`}
             >
-              {/* Map or club visual */}
-              {location.googleMapsEmbed ? (
-                <div className="overflow-hidden border-b border-forest-glow/10">
-                  <iframe
-                    src={location.googleMapsEmbed}
-                    width="100%"
-                    height="300"
-                    style={{ border: 0 }}
-                    allowFullScreen
-                    loading="lazy"
-                    referrerPolicy="no-referrer-when-downgrade"
-                    title={`${location.name} Location`}
-                    className="grayscale-[30%] contrast-110"
-                  />
-                </div>
-              ) : (
-                <div className="img-zoom relative h-[300px] overflow-hidden border-b border-forest-glow/10">
-                  <img
-                    src={images.dubaiSkyline}
-                    alt={images.dubaiSkylineAlt}
-                    className="h-full w-full object-cover"
-                    loading="lazy"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-forest-darkest/70 via-transparent to-transparent" />
-                </div>
-              )}
+              {/* Google Maps embed */}
+              <div className="overflow-hidden border-b border-forest-glow/10">
+                <iframe
+                  src={location.googleMapsEmbed}
+                  width="100%"
+                  height="300"
+                  style={{ border: 0 }}
+                  allowFullScreen
+                  loading="lazy"
+                  referrerPolicy="no-referrer-when-downgrade"
+                  title={`${location.name} Location`}
+                  className="grayscale-[30%] contrast-110"
+                />
+              </div>
 
               {/* Location details */}
               <div className="p-6 lg:p-8">

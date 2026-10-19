@@ -1,7 +1,7 @@
 import { Calendar, ArrowRight } from 'lucide-react';
 import { images, club, whatsappLink } from '@/data/clubData';
 
-export default function BookNow() {
+export default function BookNow({ onBookFootball, onBookPadel }: { onBookFootball: () => void; onBookPadel: () => void }) {
   return (
     <section id="book" className="relative bg-forest-darkest py-24 lg:py-32">
       {/* Decorative top gradient */}
@@ -43,16 +43,14 @@ export default function BookNow() {
                 Book our football field for training, matches and private games.
               </p>
               <div className="mt-6 flex flex-wrap gap-3">
-                <a
-                  href={club.bookingFootball}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                <button
+                  onClick={onBookFootball}
                   className="btn-shine group/btn flex items-center gap-2 rounded-full bg-forest-glow px-7 py-3.5 text-sm font-bold text-forest-darkest transition-all duration-300 hover:bg-forest-soft hover:shadow-xl hover:shadow-forest-glow/25"
                 >
                   <Calendar className="h-4 w-4" />
                   BOOK FOOTBALL
                   <ArrowRight className="h-4 w-4 transition-transform duration-300 group-hover/btn:translate-x-1" />
-                </a>
+                </button>
                 <a
                   href={whatsappLink("Hello OnPeak! I'd like to book the football field.")}
                   target="_blank"
@@ -84,16 +82,14 @@ export default function BookNow() {
                 Book a padel court for casual games, training and competitive matches.
               </p>
               <div className="mt-6 flex flex-wrap gap-3">
-                <a
-                  href={club.bookingPadel}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                <button
+                  onClick={onBookPadel}
                   className="btn-shine group/btn flex items-center gap-2 rounded-full bg-forest-glow px-7 py-3.5 text-sm font-bold text-forest-darkest transition-all duration-300 hover:bg-forest-soft hover:shadow-xl hover:shadow-forest-glow/25"
                 >
                   <Calendar className="h-4 w-4" />
                   BOOK PADEL
                   <ArrowRight className="h-4 w-4 transition-transform duration-300 group-hover/btn:translate-x-1" />
-                </a>
+                </button>
                 <a
                   href={whatsappLink("Hello OnPeak! I'd like to book a padel court.")}
                   target="_blank"

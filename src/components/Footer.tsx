@@ -3,7 +3,7 @@ import { club, nav, whatsappLink } from '@/data/clubData';
 
 const LOGO = '/onpeakweb/assets/images/Изображение_PNG_8.png';
 
-export default function Footer() {
+export default function Footer({ onBookFootball, onBookPadel }: { onBookFootball: () => void; onBookPadel: () => void }) {
   return (
     <footer className="relative bg-brand-deepest border-t border-brand-mid/15">
       {/* Top accent line */}
@@ -91,16 +91,16 @@ export default function Footer() {
             </h4>
             <ul className="mt-5 space-y-3">
               <li>
-                <a href={club.bookingFootball} target="_blank" rel="noopener noreferrer"
+                <button onClick={onBookFootball}
                   className="text-sm text-brand-cream/50 transition-colors duration-300 hover:text-brand-accent">
                   Book Football
-                </a>
+                </button>
               </li>
               <li>
-                <a href={club.bookingPadel} target="_blank" rel="noopener noreferrer"
+                <button onClick={onBookPadel}
                   className="text-sm text-brand-cream/50 transition-colors duration-300 hover:text-brand-accent">
                   Book Padel
-                </a>
+                </button>
               </li>
               <li>
                 <a href={whatsappLink()} target="_blank" rel="noopener noreferrer"

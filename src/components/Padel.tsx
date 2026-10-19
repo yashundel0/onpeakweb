@@ -1,7 +1,7 @@
 import { Calendar, ArrowRight, Check } from 'lucide-react';
 import { images, club, padelFeatures, whatsappLink } from '@/data/clubData';
 
-export default function Padel() {
+export default function Padel({ onBookPadel }: { onBookPadel: () => void }) {
   return (
     <section id="padel" className="relative overflow-hidden bg-forest-darkest py-24 lg:py-32">
       <div className="relative mx-auto max-w-7xl px-6 lg:px-8">
@@ -26,16 +26,14 @@ export default function Padel() {
 
             {/* CTA */}
             <div className="mt-8 flex flex-col gap-4 sm:flex-row">
-              <a
-                href={club.bookingPadel}
-                target="_blank"
-                rel="noopener noreferrer"
+              <button
+                onClick={onBookPadel}
                 className="btn-shine group flex items-center gap-3 rounded-full bg-forest-glow px-8 py-4 text-base font-bold text-forest-darkest transition-all duration-300 hover:bg-forest-soft hover:shadow-2xl hover:shadow-forest-glow/30"
               >
                 <Calendar className="h-5 w-5 transition-transform duration-300 group-hover:scale-110" />
                 BOOK PADEL
                 <ArrowRight className="h-5 w-5 transition-transform duration-300 group-hover:translate-x-1" />
-              </a>
+              </button>
               <a
                 href={whatsappLink("Hello OnPeak! I'd like to book a padel court.")}
                 target="_blank"

@@ -68,9 +68,11 @@ function App() {
     return () => window.removeEventListener('hashchange', checkHash);
   }, [navigate]);
 
-  if (view === 'admin' && !isAdmin) {
-    setView('home');
-  }
+  useEffect(() => {
+    if (view === 'admin' && !isAdmin) {
+      setView('home');
+    }
+  }, [view, isAdmin]);
 
   return (
     <div className="min-h-screen bg-forest-darkest">

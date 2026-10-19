@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   X, Calendar, Clock, MapPin, ChevronRight, ChevronLeft, Check,
-  Loader2, AlertCircle, Tag, CircleDot, Building2, ShieldCheck,
+  Loader2, AlertCircle, Tag, CircleDot, Building2, ShieldCheck, CreditCard,
 } from 'lucide-react';
 import { useBooking } from '@/context/BookingContext';
 import { useFacilities, courtsForLocation, sportBySlug } from '@/hooks/useFacilities';
@@ -9,14 +9,15 @@ import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { Slot } from '@/lib/types';
 
-type Step = 'location' | 'sport' | 'court' | 'datetime' | 'slot' | 'details' | 'review' | 'confirm';
+type Step = 'location' | 'sport' | 'court' | 'datetime' | 'slot' | 'duration' | 'details' | 'review' | 'confirm';
 
 interface StepState {
   locationId: string | null;
   sportSlug: 'padel' | 'football' | null;
   courtId: string | null;
   date: string;
-  slot: Slot | null;
+  selectedSlot: Slot | null;
+  durationMinutes: number;
   customerName: string;
   customerEmail: string;
   customerPhone: string;
@@ -47,27 +48,36 @@ function formatTime(t: string): string {
   return `${hh}:${m.toString().padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`;
 }
 
+function addMinutes(time: string, minutes: number): string {
+  const [h, m] = time.split(':').map(Number);
+  const total = h * 60 + m + minutes;
+  const nh = Math.floor(total / 60) % 24;
+  const nm = total % 60;
+  return `${nh.toString().padStart(2, '0')}:${nm.toString().padStart(2, '0')}`;
+}
+
 export default function BookingModal() {
   const { isOpen, preset, closeBooking } = useBooking();
-  const { locations, sports, courts, loading: facLoading } = useFacilities();
+  const { locations, sports, courts, loading: facLoading, error: facError } = useFacilities();
   const { user, profile } = useAuth();
 
   const [step, setStep] = useState<Step>('location');
   const [s, setS] = useState<StepState>({
     locationId: null, sportSlug: null, courtId: null,
-    date: todayISO(), slot: null,
+    date: todayISO(), selectedSlot: null, durationMinutes: 60,
     customerName: profile?.full_name || '', customerEmail: user?.email || '', customerPhone: profile?.phone || '',
     promoCode: '', notes: '',
   });
   const [slots, setSlots] = useState<Slot[]>([]);
   const [slotsLoading, setSlotsLoading] = useState(false);
   const [slotsError, setSlotsError] = useState<string | null>(null);
-  const [pricing, setPricing] = useState<{ base: number; discount: number; final: number; promoId: string | null; promoError: string | null }>({ base: 0, discount: 0, final: 0, promoId: null, promoError: null });
+  const [priceQuote, setPriceQuote] = useState<number | null>(null);
+  const [priceLoading, setPriceLoading] = useState(false);
+  const [promoDiscount, setPromoDiscount] = useState<{ discount: number; promoId: string | null; error: string | null }>({ discount: 0, promoId: null, error: null });
   const [submitting, setSubmitting] = useState(false);
-  const [confirmData, setConfirmData] = useState<{ code: string; final: number; payAtVenue: boolean } | null>(null);
+  const [confirmData, setConfirmData] = useState<{ code: string; final: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Apply preset when modal opens.
   useEffect(() => {
     if (!isOpen) return;
     setError(null);
@@ -85,7 +95,6 @@ export default function BookingModal() {
     else setStep('location');
   }, [isOpen, preset, profile, user]);
 
-  // Lock body scroll.
   useEffect(() => {
     if (!isOpen) return;
     document.body.style.overflow = 'hidden';
@@ -103,9 +112,9 @@ export default function BookingModal() {
     return courtsForLocation(courts, s.locationId, currentSport.id);
   }, [courts, s.locationId, currentSport]);
 
-  // Load slots whenever court/date/duration change.
+  // Load slots when entering the slot step
   useEffect(() => {
-    if (step !== 'slot' && step !== 'datetime') return;
+    if (step !== 'slot') return;
     if (!s.courtId || !s.date) return;
     setSlotsLoading(true);
     setSlotsError(null);
@@ -120,56 +129,95 @@ export default function BookingModal() {
     })();
   }, [step, s.courtId, s.date]);
 
-  // Recompute price when slot/duration/promo changes.
+  // Compute price when slot + duration are known
   useEffect(() => {
-    if (!s.slot || !s.courtId) { setPricing({ base: 0, discount: 0, final: 0, promoId: null, promoError: null }); return; }
-    const base = Number(s.slot.price_aed || 0);
-    if (!s.promoCode) { setPricing({ base, discount: 0, final: base, promoId: null, promoError: null }); return; }
+    if (!s.selectedSlot || !s.courtId || !s.durationMinutes) {
+      setPriceQuote(null);
+      return;
+    }
+    setPriceLoading(true);
     (async () => {
-      if (!supabase || !s.locationId || !currentSport) {
-        setPricing({ base, discount: 0, final: base, promoId: null, promoError: null });
-        return;
-      }
+      if (!supabase) { setPriceLoading(false); return; }
+      const { data, error } = await supabase.rpc('get_court_price', {
+        p_court_id: s.courtId,
+        p_duration: s.durationMinutes,
+        p_slot_start: s.selectedSlot.start_time,
+        p_booking_date: s.date,
+      });
+      if (error) { setPriceQuote(null); setPriceLoading(false); return; }
+      const price = typeof data === 'number' ? Number(data) : Number((data as any)?.price_aed || (data as any) || 0);
+      setPriceQuote(price);
+      setPriceLoading(false);
+    })();
+  }, [s.selectedSlot, s.courtId, s.durationMinutes, s.date]);
+
+  // Validate promo code
+  useEffect(() => {
+    if (!s.promoCode || !priceQuote || !s.locationId || !currentSport) {
+      setPromoDiscount({ discount: 0, promoId: null, error: null });
+      return;
+    }
+    (async () => {
+      if (!supabase) return;
       const { data, error } = await supabase.rpc('validate_promo_code', {
-        p_code: s.promoCode, p_location_id: s.locationId, p_sport_id: currentSport.id, p_price: base,
+        p_code: s.promoCode, p_location_id: s.locationId, p_sport_id: currentSport.id, p_price: priceQuote,
       });
       if (error || !data) {
-        setPricing({ base, discount: 0, final: base, promoId: null, promoError: error?.message || 'Promo code invalid' });
+        setPromoDiscount({ discount: 0, promoId: null, error: error?.message || 'Promo code invalid' });
         return;
       }
       const r = (Array.isArray(data) ? data[0] : data) as {
         is_valid: boolean; discount_amount: number; promo_code_id: string; error_message: string | null;
       } | undefined;
       if (!r || !r.is_valid) {
-        setPricing({ base, discount: 0, final: base, promoId: null, promoError: r?.error_message || 'Promo code invalid' });
+        setPromoDiscount({ discount: 0, promoId: null, error: r?.error_message || 'Promo code invalid' });
       } else {
-        const disc = Number(r.discount_amount || 0);
-        setPricing({ base, discount: disc, final: Math.max(0, base - disc), promoId: r.promo_code_id, promoError: null });
+        setPromoDiscount({ discount: Number(r.discount_amount || 0), promoId: r.promo_code_id, error: null });
       }
     })();
-  }, [s.slot, s.courtId, s.promoCode, s.locationId, currentSport]);
+  }, [s.promoCode, priceQuote, s.locationId, currentSport]);
 
   if (!isOpen) return null;
 
   const set = (patch: Partial<StepState>) => setS((prev) => ({ ...prev, ...patch }));
 
-  const stepIndex: Step[] = ['location', 'sport', 'court', 'datetime', 'slot', 'details', 'review', 'confirm'];
+  const stepIndex: Step[] = ['location', 'sport', 'court', 'datetime', 'slot', 'duration', 'details', 'review', 'confirm'];
   const currentIdx = stepIndex.indexOf(step);
+  const totalSteps = 9;
 
   const goNext = () => {
     setError(null);
-    if (step === 'location' && s.locationId) setStep('sport');
-    else if (step === 'sport' && s.sportSlug) setStep('court');
-    else if (step === 'court' && s.courtId) setStep('datetime');
-    else if (step === 'datetime' && s.date) setStep('slot');
-    else if (step === 'slot' && s.slot) setStep('details');
-    else if (step === 'details') {
+    if (step === 'location') {
+      if (!s.locationId) { setError('Please select a location.'); return; }
+      setStep('sport');
+    } else if (step === 'sport') {
+      if (!s.sportSlug) { setError('Please select a sport.'); return; }
+      setStep('court');
+    } else if (step === 'court') {
+      if (!s.courtId) { setError('Please select a court or field.'); return; }
+      setStep('datetime');
+    } else if (step === 'datetime') {
+      if (!s.date) { setError('Please select a date.'); return; }
+      setStep('slot');
+    } else if (step === 'slot') {
+      if (!s.selectedSlot) { setError('Please select a start time.'); return; }
+      setStep('duration');
+    } else if (step === 'duration') {
+      if (!s.durationMinutes) { setError('Please select a duration.'); return; }
+      setStep('details');
+    } else if (step === 'details') {
+      if (!user) {
+        setError('Please sign in to continue. Click the "Sign In" button at the top of the page.');
+        return;
+      }
       if (!s.customerName.trim() || !s.customerEmail.trim() || !s.customerPhone.trim()) {
         setError('Please provide your name, email and phone number.');
         return;
       }
       setStep('review');
-    } else if (step === 'review') submitBooking(false);
+    } else if (step === 'review') {
+      submitBooking();
+    }
   };
 
   const goBack = () => {
@@ -177,8 +225,8 @@ export default function BookingModal() {
     if (currentIdx > 0) setStep(stepIndex[currentIdx - 1]);
   };
 
-  const submitBooking = async (_payAtVenue = true) => {
-    if (!supabase || !s.courtId || !s.date || !s.slot || !currentSport) {
+  const submitBooking = async () => {
+    if (!supabase || !s.courtId || !s.date || !s.selectedSlot || !s.durationMinutes || !currentSport) {
       setError('Missing booking details. Please go back and complete the form.');
       return;
     }
@@ -187,8 +235,8 @@ export default function BookingModal() {
     const { data, error: rpcError } = await supabase.rpc('create_booking', {
       p_court_id: s.courtId,
       p_booking_date: s.date,
-      p_start_time: s.slot.start_time,
-      p_duration_minutes: s.slot.duration_minutes,
+      p_start_time: s.selectedSlot.start_time,
+      p_duration_minutes: s.durationMinutes,
       p_customer_name: s.customerName,
       p_customer_email: s.customerEmail,
       p_customer_phone: s.customerPhone,
@@ -202,19 +250,35 @@ export default function BookingModal() {
       setError(row?.error_message || 'Could not create booking. The slot may have just been taken.');
       return;
     }
-    setConfirmData({ code: row.booking_code, final: Number(row.final_price_aed), payAtVenue: true });
+    setConfirmData({ code: row.booking_code, final: Number(row.final_price_aed) });
     setStep('confirm');
   };
-
-
 
   const close = () => {
     closeBooking();
     setStep('location');
     setSlots([]);
-    setPricing({ base: 0, discount: 0, final: 0, promoId: null, promoError: null });
+    setPriceQuote(null);
+    setPromoDiscount({ discount: 0, promoId: null, error: null });
     setConfirmData(null);
     setError(null);
+  };
+
+  const finalPrice = priceQuote ? Math.max(0, priceQuote - promoDiscount.discount) : 0;
+
+  // Determine if the Continue button should be enabled
+  const canContinue = (): boolean => {
+    switch (step) {
+      case 'location': return !!s.locationId;
+      case 'sport': return !!s.sportSlug;
+      case 'court': return !!s.courtId;
+      case 'datetime': return !!s.date;
+      case 'slot': return !!s.selectedSlot;
+      case 'duration': return !!s.durationMinutes;
+      case 'details': return !!s.customerName.trim() && !!s.customerEmail.trim() && !!s.customerPhone.trim();
+      case 'review': return !submitting;
+      default: return false;
+    }
   };
 
   return (
@@ -231,7 +295,7 @@ export default function BookingModal() {
             </div>
             <div>
               <h2 className="font-display text-lg font-bold text-brand-cream">Book a session</h2>
-              <p className="text-xs text-brand-cream/50">Step {Math.min(currentIdx + 1, 8)} of 8</p>
+              <p className="text-xs text-brand-cream/50">Step {Math.min(currentIdx + 1, totalSteps)} of {totalSteps}</p>
             </div>
           </div>
           <button
@@ -247,24 +311,38 @@ export default function BookingModal() {
         <div className="h-1 w-full bg-brand-mid/20">
           <div
             className="h-full bg-brand-accent transition-all duration-500"
-            style={{ width: `${((currentIdx + 1) / 8) * 100}%` }}
+            style={{ width: `${((currentIdx + 1) / totalSteps) * 100}%` }}
           />
         </div>
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto px-6 py-6">
+          {/* Loading state for location step */}
           {facLoading && step === 'location' && (
             <div className="flex items-center justify-center py-12 text-brand-cream/60">
               <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Loading facilities…
             </div>
           )}
 
+          {/* Error state for facility loading */}
+          {facError && (step === 'location') && !facLoading && (
+            <div className="space-y-4">
+              <div className="flex items-start gap-2 rounded-xl border border-red-400/30 bg-red-400/10 p-4 text-sm text-red-200">
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                <div>
+                  <p className="font-semibold">Unable to load booking data</p>
+                  <p className="mt-1 text-xs text-red-200/70">{facError}</p>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* STEP: location */}
-          {step === 'location' && !facLoading && (
-            <Step title="Choose a location" subtitle="Pick the OnPeak location you want to play at.">
+          {step === 'location' && !facLoading && !facError && (
+            <Step title="Select Location" subtitle="Pick the OnPeak location you want to play at.">
               <div className="grid gap-3">
                 {locations.length === 0 && (
-                  <ErrorNote>No locations available right now. Please try again later.</ErrorNote>
+                  <ErrorNote>No locations are currently active.</ErrorNote>
                 )}
                 {locations.map((loc) => {
                   const padelCount = courtsForLocation(courts, loc.id, padelSport?.id || '').length;
@@ -299,20 +377,20 @@ export default function BookingModal() {
 
           {/* STEP: sport */}
           {step === 'sport' && (
-            <Step title="Choose a sport" subtitle="Football fields appear only in football booking, padel courts only in padel.">
+            <Step title="Select Sport" subtitle="Choose what you want to play.">
               <div className="grid gap-3 sm:grid-cols-2">
                 {padelSport && (
                   <SportCard
                     label="Padel" desc="Premium padel courts"
                     selected={s.sportSlug === 'padel'}
-                    onClick={() => { set({ sportSlug: 'padel', courtId: null, slot: null }); setStep('court'); }}
+                    onClick={() => { set({ sportSlug: 'padel', courtId: null, selectedSlot: null }); setStep('court'); }}
                   />
                 )}
                 {footballSport && (
                   <SportCard
                     label="Football" desc="Football fields & pitches"
                     selected={s.sportSlug === 'football'}
-                    onClick={() => { set({ sportSlug: 'football', courtId: null, slot: null }); setStep('court'); }}
+                    onClick={() => { set({ sportSlug: 'football', courtId: null, selectedSlot: null }); setStep('court'); }}
                   />
                 )}
               </div>
@@ -321,7 +399,7 @@ export default function BookingModal() {
 
           {/* STEP: court */}
           {step === 'court' && (
-            <Step title={`Pick your ${s.sportSlug === 'football' ? 'field' : 'court'}`} subtitle={`Available ${s.sportSlug} resources at ${currentLocation?.name || 'this location'}.`}>
+            <Step title={`Select ${s.sportSlug === 'football' ? 'Field' : 'Court'}`} subtitle={`Available ${s.sportSlug} resources at ${currentLocation?.name || 'this location'}.`}>
               {availableCourts.length === 0 ? (
                 <ErrorNote>No {s.sportSlug} resources found at this location.</ErrorNote>
               ) : (
@@ -332,7 +410,7 @@ export default function BookingModal() {
                     return (
                       <button
                         key={c.id}
-                        onClick={() => { set({ courtId: c.id, slot: null }); setStep('datetime'); }}
+                        onClick={() => { set({ courtId: c.id, selectedSlot: null }); setStep('datetime'); }}
                         className={`flex items-center gap-4 rounded-2xl border p-5 text-left transition-all ${
                           isPink ? 'border-pink-400/40' : selected ? 'border-brand-accent bg-brand-mid/40' : 'border-brand-mid/20 bg-brand-deepest/40 hover:border-brand-accent/40'
                         } ${selected && isPink ? 'bg-pink-500/10' : ''}`}
@@ -369,44 +447,28 @@ export default function BookingModal() {
             </Step>
           )}
 
-          {/* STEP: datetime */}
+          {/* STEP: datetime — date only */}
           {step === 'datetime' && (
-            <Step title="Choose a date and duration" subtitle={`Booking ${currentCourt?.name} at ${currentLocation?.name}.`}>
+            <Step title="Select Date" subtitle={`Booking ${currentCourt?.name} at ${currentLocation?.name}.`}>
               <label className="block">
                 <span className="text-xs font-semibold uppercase tracking-widest text-brand-cream/60">Date</span>
                 <input
                   type="date"
                   min={todayISO()}
                   value={s.date}
-                  onChange={(e) => set({ date: e.target.value, slot: null })}
+                  onChange={(e) => set({ date: e.target.value, selectedSlot: null })}
                   className="mt-2 w-full rounded-xl border border-brand-mid/30 bg-brand-deepest/60 px-4 py-3 text-brand-cream outline-none focus:border-brand-accent"
                 />
               </label>
-              <div className="mt-5">
-                <span className="text-xs font-semibold uppercase tracking-widest text-brand-cream/60">Duration</span>
-                <div className="mt-2 grid grid-cols-3 gap-2">
-                  {(DURATIONS_BY_SPORT[s.sportSlug!] || [60]).map((d) => {
-                    const sel = s.slot?.duration_minutes === d;
-                    return (
-                      <button
-                        key={d}
-                        onClick={() => set({ slot: { ...s.slot, duration_minutes: d } as Slot })}
-                        className={`rounded-xl border px-3 py-3 text-sm font-bold transition-all ${
-                          sel ? 'border-brand-accent bg-brand-accent text-brand-deepest' : 'border-brand-mid/30 bg-brand-deepest/40 text-brand-cream hover:border-brand-accent/40'
-                        }`}
-                      >
-                        {d} min
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
+              <p className="mt-4 text-xs text-brand-cream/40">
+                Selected: {formatDate(s.date)}
+              </p>
             </Step>
           )}
 
-          {/* STEP: slot */}
+          {/* STEP: slot — start time */}
           {step === 'slot' && (
-            <Step title="Available time slots" subtitle={`Loading live availability for ${formatDate(s.date)}.`}>
+            <Step title="Select Start Time" subtitle={`Available times for ${formatDate(s.date)} at ${currentCourt?.name}.`}>
               {slotsLoading && (
                 <div className="flex items-center justify-center py-8 text-brand-cream/60">
                   <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Checking live availability…
@@ -416,21 +478,20 @@ export default function BookingModal() {
               {!slotsLoading && !slotsError && (
                 <>
                   {slots.filter((sl) => sl.is_available).length === 0 ? (
-                    <ErrorNote>No available slots for this date. Try another date.</ErrorNote>
+                    <ErrorNote>No available time slots for this date. Please try another date.</ErrorNote>
                   ) : (
                     <div className="grid gap-2 sm:grid-cols-3">
                       {slots.filter((sl) => sl.is_available).map((sl) => {
-                        const sel = s.slot?.start_time === sl.start_time && s.slot?.duration_minutes === sl.duration_minutes;
+                        const sel = s.selectedSlot?.start_time === sl.start_time;
                         return (
                           <button
-                            key={`${sl.start_time}-${sl.duration_minutes}`}
-                            onClick={() => set({ slot: sl })}
+                            key={sl.start_time}
+                            onClick={() => set({ selectedSlot: sl })}
                             className={`rounded-xl border px-3 py-3 text-center transition-all ${
                               sel ? 'border-brand-accent bg-brand-accent text-brand-deepest' : 'border-brand-mid/30 bg-brand-deepest/40 text-brand-cream hover:border-brand-accent/40'
                             }`}
                           >
                             <div className="text-sm font-bold">{formatTime(sl.start_time)}</div>
-                            <div className="mt-0.5 text-[11px] opacity-80">{sl.duration_minutes} min · AED {Number(sl.price_aed).toFixed(0)}</div>
                           </button>
                         );
                       })}
@@ -441,13 +502,58 @@ export default function BookingModal() {
             </Step>
           )}
 
+          {/* STEP: duration */}
+          {step === 'duration' && (
+            <Step title="Select Duration" subtitle={`Starting at ${formatTime(s.selectedSlot?.start_time || '')} on ${formatDate(s.date)}.`}>
+              <div className="grid grid-cols-3 gap-2">
+                {(DURATIONS_BY_SPORT[s.sportSlug!] || [60]).map((d) => {
+                  const sel = s.durationMinutes === d;
+                  return (
+                    <button
+                      key={d}
+                      onClick={() => set({ durationMinutes: d })}
+                      className={`rounded-xl border px-3 py-4 text-sm font-bold transition-all ${
+                        sel ? 'border-brand-accent bg-brand-accent text-brand-deepest' : 'border-brand-mid/30 bg-brand-deepest/40 text-brand-cream hover:border-brand-accent/40'
+                      }`}
+                    >
+                      {d} min
+                      {sel && s.selectedSlot && (
+                        <div className="mt-1 text-[10px] font-normal opacity-80">
+                          until {formatTime(addMinutes(s.selectedSlot.start_time, d))}
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+              {priceLoading && (
+                <p className="mt-4 flex items-center gap-2 text-xs text-brand-cream/50">
+                  <Loader2 className="h-3 w-3 animate-spin" /> Calculating price…
+                </p>
+              )}
+              {priceQuote !== null && !priceLoading && (
+                <div className="mt-4 rounded-xl border border-brand-mid/20 bg-brand-deepest/40 p-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs uppercase tracking-widest text-brand-cream/50">Estimated price</span>
+                    <span className="font-display text-lg font-extrabold text-brand-accent">AED {priceQuote.toFixed(2)}</span>
+                  </div>
+                </div>
+              )}
+            </Step>
+          )}
+
           {/* STEP: details */}
           {step === 'details' && (
-            <Step title="Your details" subtitle="We'll use these to confirm your booking.">
+            <Step title="Customer Details" subtitle="We need your details to confirm the booking.">
               {!user && (
-                <div className="mb-4 flex items-start gap-2 rounded-xl border border-brand-accent/30 bg-brand-accent/10 p-3 text-sm text-brand-cream/80">
+                <div className="mb-4 flex items-start gap-2.5 rounded-xl border border-brand-accent/30 bg-brand-accent/10 p-4 text-sm text-brand-cream/80">
                   <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-brand-accent" />
-                  <span>Please sign in to confirm your booking. You can still browse availability as a guest.</span>
+                  <div>
+                    <p className="font-semibold text-brand-cream">Sign in required</p>
+                    <p className="mt-1 text-xs text-brand-cream/60">
+                      You need an account to confirm your booking. Please use the "Sign In" button at the top of the page to register or log in, then come back here.
+                    </p>
+                  </div>
                 </div>
               )}
               <div className="grid gap-4">
@@ -459,33 +565,45 @@ export default function BookingModal() {
                     <input type="email" value={s.customerEmail} onChange={(e) => set({ customerEmail: e.target.value })} className="op-input" placeholder="you@example.com" />
                   </Field>
                   <Field label="Phone">
-                    <input value={s.customerPhone} onChange={(e) => set({ customerPhone: e.target.value })} className="op-input" placeholder="+971 …" />
+                    <input value={s.customerPhone} onChange={(e) => set({ customerPhone: e.target.value })} className="op-input" placeholder="+971 ..." />
                   </Field>
                 </div>
                 <Field label="Notes (optional)">
                   <textarea value={s.notes} onChange={(e) => set({ notes: e.target.value })} rows={2} className="op-input" placeholder="Any special requests" />
                 </Field>
               </div>
+              <div className="mt-4 flex items-start gap-2.5 rounded-xl border border-forest-glow/20 bg-forest-glow/5 p-3 text-xs text-forest-soft/80">
+                <CreditCard className="mt-0.5 h-4 w-4 shrink-0 text-forest-glow" />
+                <span>Payment is collected at the venue on arrival. No online payment is required.</span>
+              </div>
             </Step>
           )}
 
           {/* STEP: review */}
           {step === 'review' && (
-            <Step title="Review and confirm" subtitle="Please confirm the details below.">
+            <Step title="Booking Summary" subtitle="Please review and confirm your booking.">
               <div className="rounded-2xl border border-brand-mid/20 bg-brand-deepest/40 p-5">
                 <ReviewRow icon={<MapPin className="h-4 w-4" />} label="Location" value={currentLocation?.name || '-'} />
-                <ReviewRow icon={<CircleDot className="h-4 w-4" />} label={`${s.sportSlug === 'football' ? 'Field' : 'Court'}`} value={currentCourt?.name || '-'} />
+                <ReviewRow icon={<CircleDot className="h-4 w-4" />} label={s.sportSlug === 'football' ? 'Field' : 'Court'} value={currentCourt?.name || '-'} />
                 <ReviewRow icon={<Calendar className="h-4 w-4" />} label="Date" value={formatDate(s.date)} />
-                {s.slot && (
+                {s.selectedSlot && (
                   <>
-                    <ReviewRow icon={<Clock className="h-4 w-4" />} label="Time" value={`${formatTime(s.slot.start_time)} · ${s.slot.duration_minutes} min`} />
+                    <ReviewRow icon={<Clock className="h-4 w-4" />} label="Start time" value={formatTime(s.selectedSlot.start_time)} />
+                    <ReviewRow icon={<Clock className="h-4 w-4" />} label="End time" value={formatTime(addMinutes(s.selectedSlot.start_time, s.durationMinutes))} />
+                    <ReviewRow icon={<Clock className="h-4 w-4" />} label="Duration" value={`${s.durationMinutes} minutes`} />
                     <div className="my-3 h-px bg-brand-mid/20" />
-                    <PriceRow label="Base price" value={`AED ${pricing.base.toFixed(2)}`} />
-                    {pricing.discount > 0 && <PriceRow label="Discount" value={`-AED ${pricing.discount.toFixed(2)}`} highlight />}
-                    <div className="my-2 h-px bg-brand-mid/20" />
-                    <PriceRow label="Total" value={`AED ${pricing.final.toFixed(2)}`} bold />
+                    {priceQuote !== null && (
+                      <>
+                        <PriceRow label="Price" value={`AED ${priceQuote.toFixed(2)}`} />
+                        {promoDiscount.discount > 0 && <PriceRow label="Discount" value={`-AED ${promoDiscount.discount.toFixed(2)}`} highlight />}
+                        <div className="my-2 h-px bg-brand-mid/20" />
+                        <PriceRow label="Total" value={`AED ${finalPrice.toFixed(2)}`} bold />
+                      </>
+                    )}
                   </>
                 )}
+                <div className="my-3 h-px bg-brand-mid/20" />
+                <ReviewRow icon={<CreditCard className="h-4 w-4" />} label="Payment" value="Pay at Venue" />
               </div>
 
               <div className="mt-4">
@@ -494,17 +612,12 @@ export default function BookingModal() {
                     <input value={s.promoCode} onChange={(e) => set({ promoCode: e.target.value.toUpperCase() })} className="op-input" placeholder="SAVE10" />
                   </div>
                 </Field>
-                {pricing.promoError && <p className="mt-1 text-xs text-red-300">{pricing.promoError}</p>}
-                {pricing.discount > 0 && (
+                {promoDiscount.error && <p className="mt-1 text-xs text-red-300">{promoDiscount.error}</p>}
+                {promoDiscount.discount > 0 && (
                   <p className="mt-1 flex items-center gap-1 text-xs text-brand-accent">
-                    <Check className="h-3 w-3" /> Promo applied — you save AED {pricing.discount.toFixed(2)}.
+                    <Check className="h-3 w-3" /> Promo applied - you save AED {promoDiscount.discount.toFixed(2)}.
                   </p>
                 )}
-              </div>
-
-              <div className="mt-4 flex items-start gap-2.5 rounded-xl border border-forest-glow/20 bg-forest-glow/5 p-3 text-xs text-forest-soft/80">
-                <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-forest-glow" />
-                <span>Payment is collected at the venue on arrival. No online payment is required.</span>
               </div>
 
               {error && <ErrorNote>{error}</ErrorNote>}
@@ -529,7 +642,7 @@ export default function BookingModal() {
                 <p className="mt-2 text-center text-[11px] text-brand-cream/40">Please pay when you arrive at the OnPeak location.</p>
               </div>
               <p className="mt-4 max-w-sm text-[11px] text-brand-cream/40">
-                Your booking is saved to your account. You can view or cancel it from &ldquo;My Bookings&rdquo;.
+                Your booking is saved to your account. You can view or cancel it from "My Bookings".
               </p>
               <button
                 onClick={close}
@@ -540,10 +653,10 @@ export default function BookingModal() {
             </div>
           )}
 
-          {error && step !== 'review' && step !== 'confirm' && <ErrorNote>{error}</ErrorNote>}
+          {error && step !== 'review' && step !== 'confirm' && <div className="mt-4"><ErrorNote>{error}</ErrorNote></div>}
         </div>
 
-        {/* Footer nav */}
+        {/* Footer nav - Always show Continue button except on confirm step */}
         {step !== 'confirm' && (
           <div className="flex items-center justify-between gap-3 border-t border-brand-mid/20 px-6 py-4">
             <button
@@ -555,17 +668,21 @@ export default function BookingModal() {
             </button>
             {step === 'review' ? (
               <button
-                onClick={() => goNext()}
-                disabled={submitting}
+                onClick={goNext}
+                disabled={!canContinue()}
                 className="flex items-center gap-2 rounded-full bg-brand-accent px-6 py-2.5 text-sm font-bold text-brand-deepest transition-colors hover:bg-brand-light disabled:opacity-60"
               >
                 {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-                {submitting ? 'Confirming…' : 'Confirm booking'}
+                {submitting ? 'Confirming...' : 'Confirm Booking'}
               </button>
             ) : (
-              <div className="text-xs text-brand-cream/40">
-                {s.slot && step === 'slot' && `AED ${pricing.base.toFixed(2)}`}
-              </div>
+              <button
+                onClick={goNext}
+                disabled={!canContinue()}
+                className="flex items-center gap-2 rounded-full bg-brand-accent px-6 py-2.5 text-sm font-bold text-brand-deepest transition-colors hover:bg-brand-light disabled:opacity-50"
+              >
+                Continue <ChevronRight className="h-4 w-4" />
+              </button>
             )}
           </div>
         )}

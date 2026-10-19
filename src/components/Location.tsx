@@ -1,11 +1,11 @@
-import { MapPin, Navigation, Clock, Mail, Phone, Calendar, Loader2, CircleDot, Building2, Home } from 'lucide-react';
+import { MapPin, Navigation, Clock, Mail, Phone, Calendar, Loader2, CircleDot, Building2, Home, AlertCircle } from 'lucide-react';
 import { club, whatsappLink } from '@/data/clubData';
 import { useFacilities, courtsForLocation, sportBySlug } from '@/hooks/useFacilities';
 import { useBooking } from '@/context/BookingContext';
 import { Court } from '@/lib/types';
 
 export default function Location() {
-  const { locations, sports, courts, loading } = useFacilities();
+  const { locations, sports, courts, loading, error } = useFacilities();
   const { openBooking } = useBooking();
   const padel = sportBySlug(sports, 'padel');
   const football = sportBySlug(sports, 'football');
@@ -29,7 +29,18 @@ export default function Location() {
           </div>
         )}
 
-        {!loading && (
+        {error && !loading && (
+          <div className="mt-12 flex items-start gap-3 rounded-2xl border border-red-400/30 bg-red-400/10 p-6 text-red-200">
+            <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
+            <div>
+              <p className="font-semibold">Unable to load locations</p>
+              <p className="mt-1 text-sm text-red-200/70">{error}</p>
+              <p className="mt-2 text-xs text-red-200/50">Please check your connection and try again.</p>
+            </div>
+          </div>
+        )}
+
+        {!loading && !error && (
           <div className="mt-16 grid gap-10 lg:grid-cols-2">
             {locations.map((location, index) => {
               const padelCourts = padel ? courtsForLocation(courts, location.id, padel.id) : [];
@@ -141,7 +152,7 @@ export default function Location() {
           </div>
         )}
 
-        {!loading && locations.length === 0 && (
+        {!loading && !error && locations.length === 0 && (
           <div className="mt-12 rounded-2xl border border-forest-glow/15 bg-forest-dark/20 p-8 text-center text-white-soft/50">
             No locations available at the moment.
           </div>

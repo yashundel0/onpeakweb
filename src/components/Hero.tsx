@@ -1,7 +1,7 @@
 import { Calendar, ChevronDown } from 'lucide-react';
 import { images, club, whatsappLink } from '@/data/clubData';
 
-export default function Hero({ onBookFootball, onBookPadel }: { onBookFootball: () => void; onBookPadel: () => void }) {
+export default function Hero() {
   return (
     <section
       id="home"
@@ -65,20 +65,24 @@ export default function Hero({ onBookFootball, onBookPadel }: { onBookFootball: 
           className="animate-fade-in-up mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row"
           style={{ animationDelay: '1s' }}
         >
-          <button
-            onClick={onBookFootball}
+          <a
+            href={club.bookingFootball}
+            target="_blank"
+            rel="noopener noreferrer"
             className="btn-shine group flex w-full items-center justify-center gap-3 rounded-full bg-forest-glow px-8 py-4 text-base font-bold text-forest-darkest transition-all duration-300 hover:bg-forest-soft hover:shadow-2xl hover:shadow-forest-glow/30 sm:w-auto"
           >
             <Calendar className="h-5 w-5 transition-transform duration-300 group-hover:scale-110" />
             BOOK FOOTBALL
-          </button>
-          <button
-            onClick={onBookPadel}
+          </a>
+          <a
+            href={club.bookingPadel}
+            target="_blank"
+            rel="noopener noreferrer"
             className="btn-shine group flex w-full items-center justify-center gap-3 rounded-full border-2 border-white/20 bg-white/5 px-8 py-4 text-base font-bold text-white backdrop-blur-md transition-all duration-300 hover:border-forest-glow/50 hover:bg-forest-glow/10 hover:shadow-xl hover:shadow-forest-glow/20 sm:w-auto"
           >
             <Calendar className="h-5 w-5 transition-transform duration-300 group-hover:scale-110" />
             BOOK PADEL
-          </button>
+          </a>
         </div>
 
         {/* WhatsApp quick link */}

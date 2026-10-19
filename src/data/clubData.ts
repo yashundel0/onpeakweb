@@ -48,9 +48,6 @@ export const locations = [
     city: club.city,
     googleMaps: club.googleMaps,
     googleMapsEmbed: club.googleMapsEmbed,
-    padelCount: 2,
-    footballCount: 1,
-    indoor: false,
   },
   {
     id: 'al-quoz',
@@ -60,31 +57,6 @@ export const locations = [
     googleMaps: 'https://maps.app.goo.gl/svm8iAksPtHJzhPB9?g_st=ic',
     googleMapsEmbed:
       'https://www.google.com/maps?q=5793+RQ7,+Abu+Hanifa+School+for+Basic+Education+for+Boys,+17B+Street,+Al+Quoz+First,+Al+Quoz,+Dubai,+UAE&z=16&output=embed',
-    padelCount: 1,
-    footballCount: 1,
-    indoor: false,
-  },
-  {
-    id: 'onpeak-location-1',
-    name: 'OnPeak Location 1',
-    address: 'Dubai, UAE',
-    city: 'Dubai, UAE',
-    googleMaps: 'https://maps.app.goo.gl/Fmqjo35YRTqqB3jFA?g_st=ic',
-    googleMapsEmbed: '',
-    padelCount: 3,
-    footballCount: 1,
-    indoor: false,
-  },
-  {
-    id: 'onpeak-location-2',
-    name: 'OnPeak Location 2',
-    address: 'Dubai, UAE',
-    city: 'Dubai, UAE',
-    googleMaps: 'https://maps.app.goo.gl/udtwpcmByc7Ekej5A?g_st=ic',
-    googleMapsEmbed: '',
-    padelCount: 5,
-    footballCount: 1,
-    indoor: true,
   },
 ];
 
@@ -186,8 +158,8 @@ export const eventTypes = [
 ];
 
 export const stats = [
-  { value: 8, label: 'Padel Courts', suffix: '' },
-  { value: 2, label: 'Football Fields', suffix: '' },
+  { value: 2, label: 'Padel Courts', suffix: '' },
+  { value: 1, label: 'Football Pitch', suffix: '' },
   { value: 7, label: 'Days a Week', suffix: '' },
   { value: 100, label: 'Premium Experience', suffix: '%' },
 ];

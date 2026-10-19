@@ -1,7 +1,7 @@
 import { Instagram, MessageCircle, Mail, Phone, MapPin, Navigation } from 'lucide-react';
 import { club, nav, whatsappLink } from '@/data/clubData';
 
-export default function Contact({ onBookFootball, onBookPadel }: { onBookFootball: () => void; onBookPadel: () => void }) {
+export default function Contact() {
   return (
     <section id="contact" className="relative bg-forest-darker py-24 lg:py-32">
       <div className="mx-auto max-w-7xl px-6 lg:px-8">
@@ -112,18 +112,22 @@ export default function Contact({ onBookFootball, onBookPadel }: { onBookFootbal
                 Book your football field or padel court now.
               </p>
               <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-                <button
-                  onClick={onBookFootball}
+                <a
+                  href={club.bookingFootball}
+                  target="_blank"
+                  rel="noopener noreferrer"
                   className="flex-1 rounded-full bg-forest-glow px-6 py-3 text-sm font-bold text-forest-darkest transition-all duration-300 hover:bg-forest-soft"
                 >
                   BOOK FOOTBALL
-                </button>
-                <button
-                  onClick={onBookPadel}
+                </a>
+                <a
+                  href={club.bookingPadel}
+                  target="_blank"
+                  rel="noopener noreferrer"
                   className="flex-1 rounded-full border border-white/20 px-6 py-3 text-sm font-bold text-white transition-all duration-300 hover:border-forest-glow/40 hover:bg-forest-glow/10"
                 >
                   BOOK PADEL
-                </button>
+                </a>
               </div>
             </div>
           </div>

@@ -1,7 +1,7 @@
 import { Calendar, ArrowRight, Check } from 'lucide-react';
 import { images, club, footballFeatures, whatsappLink } from '@/data/clubData';
 
-export default function Football({ onBookFootball }: { onBookFootball: () => void }) {
+export default function Football() {
   return (
     <section id="football" className="relative overflow-hidden bg-forest-darker py-24 lg:py-32">
       {/* Subtle pattern */}
@@ -61,14 +61,16 @@ export default function Football({ onBookFootball }: { onBookFootball: () => voi
 
         {/* CTA */}
         <div className="reveal mt-12 flex flex-col items-center gap-4 sm:flex-row">
-          <button
-            onClick={onBookFootball}
+          <a
+            href={club.bookingFootball}
+            target="_blank"
+            rel="noopener noreferrer"
             className="btn-shine group flex items-center gap-3 rounded-full bg-forest-glow px-8 py-4 text-base font-bold text-forest-darkest transition-all duration-300 hover:bg-forest-soft hover:shadow-2xl hover:shadow-forest-glow/30"
           >
             <Calendar className="h-5 w-5 transition-transform duration-300 group-hover:scale-110" />
             BOOK FOOTBALL
             <ArrowRight className="h-5 w-5 transition-transform duration-300 group-hover:translate-x-1" />
-          </button>
+          </a>
           <a
             href={whatsappLink("Hello OnPeak! I'd like to book the football field.")}
             target="_blank"

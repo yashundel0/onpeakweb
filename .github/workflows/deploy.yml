@@ -31,16 +31,37 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # Optional: override committed .env.production with repository secrets
-      # if they exist (for switching Supabase projects without a code change).
-      - name: Apply optional Supabase secrets
-        if: ${{ secrets.VITE_SUPABASE_URL != '' && secrets.VITE_SUPABASE_ANON_KEY != '' }}
+      - name: Configure Supabase env for build
+        env:
+          SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
         run: |
-          echo "VITE_SUPABASE_URL=${{ secrets.VITE_SUPABASE_URL }}" > .env.production
-          echo "VITE_SUPABASE_ANON_KEY=${{ secrets.VITE_SUPABASE_ANON_KEY }}" >> .env.production
+          set -euo pipefail
+          # A committed .env.production provides public default values so the
+          # build can run without secrets. Repository secrets, when set, take
+          # precedence and override those defaults.
+          if [ -n "${SUPABASE_URL:-}" ] && [ -n "${SUPABASE_ANON_KEY:-}" ]; then
+            echo "Using Supabase configuration from repository secrets."
+            : > .env.production
+            echo "VITE_SUPABASE_URL=${SUPABASE_URL}" >> .env.production
+            echo "VITE_SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}" >> .env.production
+          elif [ -f .env.production ] && grep -q '^VITE_SUPABASE_URL=https://' .env.production && grep -q '^VITE_SUPABASE_ANON_KEY=.' .env.production; then
+            echo "Using committed .env.production defaults."
+          else
+            echo "::error::Supabase configuration is missing. Either add repository secrets VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in Settings > Secrets and variables > Actions, or commit a .env.production file with public anon values."
+            exit 1
+          fi
 
       - name: Build site
         run: npm run build
+
+      - name: Verify Supabase config in bundle
+        run: |
+          if ! grep -q "oqsmadifgigiqielbuaz\|supabase.co" dist/assets/index-*.js 2>/dev/null; then
+            echo "::error::Supabase URL not found in production bundle — env vars were not embedded."
+            exit 1
+          fi
+          echo "Supabase configuration verified in production bundle."
 
       - name: Upload site artifact
         uses: actions/upload-pages-artifact@v3

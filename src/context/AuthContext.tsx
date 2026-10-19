@@ -54,8 +54,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     let mounted = true;
 
-    supabase.auth.getSession().then(({ data }) => {
+    supabase.auth.getSession().then(({ data, error }) => {
       if (!mounted) return;
+      if (error) {
+        console.error('Session load error:', error.message);
+        setState({ user: null, session: null, profile: null, isAdmin: false, loading: false, error: null });
+        return;
+      }
       const session = data.session;
       if (!session?.user) {
         setState({ user: null, session: null, profile: null, isAdmin: false, loading: false, error: null });
@@ -73,6 +78,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           error: null,
         });
       })();
+    }).catch((err) => {
+      console.error('getSession rejected:', err);
+      if (mounted) setState({ user: null, session: null, profile: null, isAdmin: false, loading: false, error: null });
     });
 
     const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {

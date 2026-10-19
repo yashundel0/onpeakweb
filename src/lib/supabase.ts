@@ -8,16 +8,27 @@ let warned = false;
 
 export function getSupabase(): SupabaseClient | null {
   if (client) return client;
-  if (!url || !anonKey) {
+  if (!url || !anonKey || !url.startsWith('http')) {
     if (!warned) {
-      console.warn('Supabase env vars missing — booking/auth disabled.');
+      console.warn('Supabase env vars missing or invalid — booking/auth disabled.');
       warned = true;
     }
     return null;
   }
-  client = createClient(url, anonKey, {
-    auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
-  });
+  try {
+    client = createClient(url, anonKey, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: false,
+        storage: typeof window !== 'undefined' ? window.localStorage : undefined,
+        storageKey: 'onpeak-auth',
+      },
+    });
+  } catch (err) {
+    console.error('Failed to initialize Supabase client:', err);
+    return null;
+  }
   return client;
 }
 

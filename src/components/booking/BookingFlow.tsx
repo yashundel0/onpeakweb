@@ -325,19 +325,41 @@ export default function BookingFlow({
                 </p>
               ) : (
                 <div className="grid gap-4 sm:grid-cols-2">
-                  {courts.map((court) => (
-                    <button
-                      key={court.id}
-                      onClick={() => handleSelectCourt(court.id)}
-                      className="group rounded-2xl border border-white/10 bg-forest-dark/30 p-6 text-left transition-all duration-300 hover:border-forest-glow/40 hover:bg-forest-dark/50"
-                    >
-                      <h3 className="font-display text-lg font-bold text-white">{court.name}</h3>
-                      <p className="mt-1 text-sm capitalize text-white-soft/50">{court.court_type}</p>
-                      <span className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-forest-glow opacity-0 transition-opacity group-hover:opacity-100">
-                        Select <ArrowRight className="h-3 w-3" />
-                      </span>
-                    </button>
-                  ))}
+                  {courts.map((court) => {
+                    const isPink = court.special_marker === 'pink';
+                    const isIndoor = court.is_indoor === true;
+                    return (
+                      <button
+                        key={court.id}
+                        onClick={() => handleSelectCourt(court.id)}
+                        className={`group rounded-2xl border p-6 text-left transition-all duration-300 hover:bg-forest-dark/50 ${
+                          isPink
+                            ? 'border-pink-400/40 bg-pink-500/5 hover:border-pink-400/70'
+                            : isIndoor
+                            ? 'border-sky-400/30 bg-sky-500/5 hover:border-sky-400/60'
+                            : 'border-white/10 bg-forest-dark/30 hover:border-forest-glow/40'
+                        }`}
+                      >
+                        <div className="mb-2 flex flex-wrap items-center gap-2">
+                          {isPink && (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-pink-500/20 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-pink-300">
+                              <span className="h-1.5 w-1.5 rounded-full bg-pink-400" /> Pink Court
+                            </span>
+                          )}
+                          {isIndoor && (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-sky-500/20 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-sky-300">
+                              Indoor / Covered
+                            </span>
+                          )}
+                        </div>
+                        <h3 className="font-display text-lg font-bold text-white">{court.name}</h3>
+                        <p className="mt-1 text-sm capitalize text-white-soft/50">{court.court_type}</p>
+                        <span className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-forest-glow opacity-0 transition-opacity group-hover:opacity-100">
+                          Select <ArrowRight className="h-3 w-3" />
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </div>

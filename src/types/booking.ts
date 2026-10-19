@@ -35,6 +35,8 @@ export interface Court {
   court_type: string;
   is_active: boolean;
   sort_order: number;
+  is_indoor: boolean;
+  special_marker: string | null;
 }
 
 export interface CourtPricing {

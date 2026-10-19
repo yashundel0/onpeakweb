@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import {
   X, Calendar, Users, Building2, Ban, BarChart3, Loader2, AlertCircle,
-  Search, MapPin, CircleDot, Clock, Check, Trash2, ShieldAlert,
+  Search, MapPin, CircleDot, Clock, Check, Trash2, ShieldAlert, CreditCard,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/supabase';
@@ -76,7 +76,7 @@ export default function AdminDashboard({ onClose }: { onClose: () => void }) {
     .filter((b) => b.booking_date === today && b.payment_status === 'paid')
     .reduce((sum, b) => sum + Number(b.final_price_aed), 0);
   const paidCount = bookings.filter((b) => b.payment_status === 'paid').length;
-  const pendingCount = bookings.filter((b) => b.payment_status === 'pending').length;
+  const pendingCount = bookings.filter((b) => b.payment_status === 'pay_at_venue' || b.payment_status === 'pending').length;
   const footballBookings = bookings.filter((b) => sportName(b.sport_id).toLowerCase() === 'football').length;
   const padelBookings = bookings.filter((b) => sportName(b.sport_id).toLowerCase() === 'padel').length;
   const newCustomers = profiles.length;
@@ -143,7 +143,7 @@ export default function AdminDashboard({ onClose }: { onClose: () => void }) {
               <Metric label="Upcoming bookings" value={upcomingBookings.length} />
               <Metric label="Today's revenue" value={`AED ${todaysRevenue.toFixed(2)}`} />
               <Metric label="Paid" value={paidCount} />
-              <Metric label="Pending payments" value={pendingCount} />
+              <Metric label="Pay at venue" value={pendingCount} />
               <Metric label="Active resources" value={activeCourts} />
               <Metric label="Football bookings" value={footballBookings} />
               <Metric label="Padel bookings" value={padelBookings} />
@@ -154,7 +154,7 @@ export default function AdminDashboard({ onClose }: { onClose: () => void }) {
             </div>
           )}
 
-          {!loading && tab === 'bookings' && <BookingsTab bookings={bookings} locName={locName} courtName={courtName} sportName={sportName} fmtDate={fmtDate} fmtTime={fmtTime} />}
+          {!loading && tab === 'bookings' && <BookingsTab bookings={bookings} locName={locName} courtName={courtName} sportName={sportName} fmtDate={fmtDate} fmtTime={fmtTime} onChanged={load} />}
 
           {!loading && tab === 'resources' && (
             <ResourcesTab locations={locations} sports={sports} courts={courts} />
@@ -182,8 +182,26 @@ function Metric({ label, value }: { label: string; value: number | string }) {
   );
 }
 
+function paymentLabel(status: string): string {
+  switch (status) {
+    case 'pay_at_venue': return 'Pay at venue';
+    case 'paid': return 'Paid';
+    case 'pending': return 'Pending';
+    case 'cancelled': return 'Cancelled';
+    case 'refunded': return 'Refunded';
+    default: return status.replace(/_/g, ' ');
+  }
+}
+
+function paymentBadgeClass(status: string): string {
+  if (status === 'paid') return 'border-green-400/40 bg-green-400/10 text-green-300';
+  if (status === 'pay_at_venue') return 'border-yellow-400/40 bg-yellow-400/10 text-yellow-200';
+  if (status === 'cancelled') return 'border-red-400/40 bg-red-400/10 text-red-300';
+  return 'border-brand-mid/30 text-brand-cream/50';
+}
+
 function BookingsTab({
-  bookings, locName, courtName, sportName, fmtDate, fmtTime,
+  bookings, locName, courtName, sportName, fmtDate, fmtTime, onChanged,
 }: {
   bookings: Booking[];
   locName: (id: string) => string;
@@ -191,26 +209,29 @@ function BookingsTab({
   sportName: (id: string) => string;
   fmtDate: (d: string) => string;
   fmtTime: (t: string) => string;
+  onChanged: () => void;
 }) {
   const [q, setQ] = useState('');
-  const [locFilter, setLocFilter] = useState('');
-  const [sportFilter, setSportFilter] = useState('');
+  const [marking, setMarking] = useState<string | null>(null);
 
   const filtered = useMemo(() => {
-    return bookings.filter((b) => {
-      if (locFilter && b.location_id !== locFilter) return false;
-      if (sportFilter && b.sport_id !== sportFilter) return false;
-      if (q) {
-        const ql = q.toLowerCase();
-        return (
-          b.booking_code.toLowerCase().includes(ql) ||
-          (b.customer_name || '').toLowerCase().includes(ql) ||
-          (b.customer_email || '').toLowerCase().includes(ql)
-        );
-      }
-      return true;
-    });
-  }, [bookings, q, locFilter, sportFilter]);
+    if (!q) return bookings;
+    const ql = q.toLowerCase();
+    return bookings.filter((b) =>
+      b.booking_code.toLowerCase().includes(ql) ||
+      (b.customer_name || '').toLowerCase().includes(ql) ||
+      (b.customer_email || '').toLowerCase().includes(ql)
+    );
+  }, [bookings, q]);
+
+  const markPaid = async (bookingId: string) => {
+    if (!supabase) return;
+    setMarking(bookingId);
+    await supabase.from('bookings').update({ payment_status: 'paid' }).eq('id', bookingId);
+    await supabase.from('payments').update({ status: 'paid', paid_at: new Date().toISOString() }).eq('booking_id', bookingId);
+    setMarking(null);
+    onChanged();
+  };
 
   return (
     <div>
@@ -228,7 +249,7 @@ function BookingsTab({
           <table className="w-full text-left text-xs">
             <thead className="bg-brand-deep text-brand-cream/60">
               <tr>
-                <Th>Code</Th><Th>Customer</Th><Th>Sport</Th><Th>Court</Th><Th>Date</Th><Th>Time</Th><Th>AED</Th><Th>Status</Th>
+                <Th>Code</Th><Th>Customer</Th><Th>Sport</Th><Th>Court</Th><Th>Date</Th><Th>Time</Th><Th>AED</Th><Th>Payment</Th><Th>Action</Th>
               </tr>
             </thead>
             <tbody>
@@ -242,8 +263,27 @@ function BookingsTab({
                   <Td>{fmtTime(b.start_time)} · {b.duration_minutes}m</Td>
                   <Td>{Number(b.final_price_aed).toFixed(2)}</Td>
                   <Td>
-                    <span className="rounded-full border border-brand-mid/30 px-2 py-0.5 text-[10px] font-semibold uppercase">{b.booking_status}</span>
-                    <span className="mt-1 block text-[10px] text-brand-cream/40">{b.payment_status.replace('_', ' ')}</span>
+                    <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${paymentBadgeClass(b.payment_status)}`}>
+                      {paymentLabel(b.payment_status)}
+                    </span>
+                    <span className="mt-0.5 block text-[10px] text-brand-cream/40 uppercase">{b.booking_status}</span>
+                  </Td>
+                  <Td>
+                    {(b.payment_status === 'pay_at_venue' || b.payment_status === 'pending') && b.booking_status !== 'cancelled' && (
+                      <button
+                        onClick={() => markPaid(b.id)}
+                        disabled={marking === b.id}
+                        className="flex items-center gap-1 rounded-full border border-green-400/40 bg-green-400/10 px-3 py-1 text-[11px] font-semibold text-green-300 transition-colors hover:bg-green-400/20 disabled:opacity-50"
+                      >
+                        {marking === b.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <CreditCard className="h-3 w-3" />}
+                        Mark paid
+                      </button>
+                    )}
+                    {b.payment_status === 'paid' && (
+                      <span className="flex items-center gap-1 text-[11px] font-semibold text-green-300">
+                        <Check className="h-3 w-3" /> Paid
+                      </span>
+                    )}
                   </Td>
                 </tr>
               ))}

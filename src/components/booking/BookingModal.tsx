@@ -177,7 +177,7 @@ export default function BookingModal() {
     if (currentIdx > 0) setStep(stepIndex[currentIdx - 1]);
   };
 
-  const submitBooking = async (payAtVenue: boolean) => {
+  const submitBooking = async (_payAtVenue = true) => {
     if (!supabase || !s.courtId || !s.date || !s.slot || !currentSport) {
       setError('Missing booking details. Please go back and complete the form.');
       return;
@@ -202,14 +202,11 @@ export default function BookingModal() {
       setError(row?.error_message || 'Could not create booking. The slot may have just been taken.');
       return;
     }
-    setConfirmData({ code: row.booking_code, final: Number(row.final_price_aed), payAtVenue });
+    setConfirmData({ code: row.booking_code, final: Number(row.final_price_aed), payAtVenue: true });
     setStep('confirm');
   };
 
-  // Payment is NOT live (no gateway configured). We only support pay-at-venue
-  // confirmation, which is an explicitly labeled business policy the customer
-  // opts into. We never simulate an online payment success.
-  const PAYMENT_NOTE = 'Online payment is not yet live. Your reservation is created as pay-at-venue — you confirm at the front desk.';
+
 
   const close = () => {
     closeBooking();
@@ -505,8 +502,9 @@ export default function BookingModal() {
                 )}
               </div>
 
-              <div className="mt-4 rounded-xl border border-yellow-400/20 bg-yellow-400/5 p-3 text-xs text-yellow-200/80">
-                <ShieldCheck className="mb-1 inline h-4 w-4" /> {PAYMENT_NOTE}
+              <div className="mt-4 flex items-start gap-2.5 rounded-xl border border-forest-glow/20 bg-forest-glow/5 p-3 text-xs text-forest-soft/80">
+                <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-forest-glow" />
+                <span>Payment is collected at the venue on arrival. No online payment is required.</span>
               </div>
 
               {error && <ErrorNote>{error}</ErrorNote>}
@@ -519,16 +517,19 @@ export default function BookingModal() {
               <div className="flex h-16 w-16 items-center justify-center rounded-full bg-brand-accent/15 text-brand-accent">
                 <Check className="h-8 w-8" />
               </div>
-              <h3 className="mt-4 font-display text-2xl font-extrabold text-brand-cream">Booking confirmed</h3>
+              <h3 className="mt-4 font-display text-2xl font-extrabold text-brand-cream">Booking Confirmed!</h3>
               <p className="mt-2 text-sm text-brand-cream/60">
                 Your reservation code is{' '}
                 <span className="font-mono font-bold text-brand-accent">{confirmData.code}</span>
               </p>
-              <p className="mt-1 text-xs text-brand-cream/50">
-                {confirmData.payAtVenue ? 'Pay at venue on arrival.' : `Total AED ${confirmData.final.toFixed(2)}`}
-              </p>
-              <p className="mt-3 max-w-sm text-[11px] text-brand-cream/40">
-                We saved your booking against your account. You can view and cancel it from “My Account”.
+              <div className="mt-4 flex w-full max-w-xs flex-col items-center gap-1 rounded-2xl border border-forest-glow/30 bg-forest-glow/10 px-6 py-4">
+                <span className="text-xs font-semibold uppercase tracking-widest text-forest-soft/60">Payment</span>
+                <span className="mt-1 font-display text-xl font-extrabold text-forest-glow">Pay at Venue</span>
+                <span className="mt-1 text-xs text-brand-cream/50">Total: AED {confirmData.final.toFixed(2)}</span>
+                <p className="mt-2 text-center text-[11px] text-brand-cream/40">Please pay when you arrive at the OnPeak location.</p>
+              </div>
+              <p className="mt-4 max-w-sm text-[11px] text-brand-cream/40">
+                Your booking is saved to your account. You can view or cancel it from &ldquo;My Bookings&rdquo;.
               </p>
               <button
                 onClick={close}

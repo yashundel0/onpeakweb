@@ -1,7 +1,7 @@
 export type SportSlug = 'padel' | 'football';
 
 export type BookingStatus = 'pending' | 'confirmed' | 'cancelled' | 'completed' | 'expired';
-export type PaymentStatus = 'pending' | 'paid' | 'failed' | 'refunded' | 'partially_refunded';
+export type PaymentStatus = 'pending' | 'pay_at_venue' | 'paid' | 'failed' | 'refunded' | 'cancelled';
 
 export interface Sport {
   id: string;

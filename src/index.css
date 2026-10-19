@@ -113,6 +113,20 @@
   .text-brand-deepest { color: #0f1f18; }
   .border-brand-mid  { border-color: #2a4d3c; }
   .border-brand-accent { border-color: #3d8f66; }
+
+  /* Form inputs used by booking/auth/admin */
+  .op-input {
+    width: 100%;
+    border-radius: 0.75rem;
+    border: 1px solid rgba(42, 77, 60, 0.4);
+    background-color: rgba(15, 31, 24, 0.6);
+    padding: 0.75rem 1rem;
+    color: #e8e5d0;
+    outline: none;
+    transition: border-color 0.2s ease;
+  }
+  .op-input:focus { border-color: #3d8f66; }
+  .op-input::placeholder { color: rgba(197, 194, 170, 0.5); }
 }
 
 /* ===== Animations ===== */

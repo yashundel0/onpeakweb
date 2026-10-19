@@ -1,7 +1,9 @@
-import { Instagram, MessageCircle, Mail, Phone, MapPin, Navigation } from 'lucide-react';
+import { Instagram, MessageCircle, Mail, Phone, MapPin, Navigation, Calendar } from 'lucide-react';
 import { club, nav, whatsappLink } from '@/data/clubData';
+import { useBooking } from '@/context/BookingContext';
 
 export default function Contact() {
+  const { openBooking } = useBooking();
   return (
     <section id="contact" className="relative bg-forest-darker py-24 lg:py-32">
       <div className="mx-auto max-w-7xl px-6 lg:px-8">
@@ -112,22 +114,18 @@ export default function Contact() {
                 Book your football field or padel court now.
               </p>
               <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-                <a
-                  href={club.bookingFootball}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                <button
+                  onClick={() => openBooking({ sport: 'football' })}
                   className="flex-1 rounded-full bg-forest-glow px-6 py-3 text-sm font-bold text-forest-darkest transition-all duration-300 hover:bg-forest-soft"
                 >
                   BOOK FOOTBALL
-                </a>
-                <a
-                  href={club.bookingPadel}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                </button>
+                <button
+                  onClick={() => openBooking({ sport: 'padel' })}
                   className="flex-1 rounded-full border border-white/20 px-6 py-3 text-sm font-bold text-white transition-all duration-300 hover:border-forest-glow/40 hover:bg-forest-glow/10"
                 >
                   BOOK PADEL
-                </a>
+                </button>
               </div>
             </div>
           </div>

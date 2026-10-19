@@ -1,0 +1,637 @@
+import { useEffect, useMemo, useState } from 'react';
+import {
+  X, Calendar, Clock, MapPin, ChevronRight, ChevronLeft, Check,
+  Loader2, AlertCircle, Tag, CircleDot, Building2, ShieldCheck,
+} from 'lucide-react';
+import { useBooking } from '@/context/BookingContext';
+import { useFacilities, courtsForLocation, sportBySlug } from '@/hooks/useFacilities';
+import { useAuth } from '@/context/AuthContext';
+import { supabase } from '@/lib/supabase';
+import { Slot } from '@/lib/types';
+
+type Step = 'location' | 'sport' | 'court' | 'datetime' | 'slot' | 'details' | 'review' | 'confirm';
+
+interface StepState {
+  locationId: string | null;
+  sportSlug: 'padel' | 'football' | null;
+  courtId: string | null;
+  date: string;
+  slot: Slot | null;
+  customerName: string;
+  customerEmail: string;
+  customerPhone: string;
+  promoCode: string;
+  notes: string;
+}
+
+const DURATIONS_BY_SPORT: Record<'padel' | 'football', number[]> = {
+  padel: [60, 90],
+  football: [60, 90, 120],
+};
+
+function todayISO(): string {
+  const d = new Date();
+  return d.toISOString().slice(0, 10);
+}
+
+function formatDate(iso: string): string {
+  if (!iso) return '';
+  const d = new Date(iso + 'T00:00:00');
+  return d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+function formatTime(t: string): string {
+  if (!t) return '';
+  const [h, m] = t.split(':').map(Number);
+  const hh = ((h + 11) % 12) + 1;
+  return `${hh}:${m.toString().padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`;
+}
+
+export default function BookingModal() {
+  const { isOpen, preset, closeBooking } = useBooking();
+  const { locations, sports, courts, loading: facLoading } = useFacilities();
+  const { user, profile } = useAuth();
+
+  const [step, setStep] = useState<Step>('location');
+  const [s, setS] = useState<StepState>({
+    locationId: null, sportSlug: null, courtId: null,
+    date: todayISO(), slot: null,
+    customerName: profile?.full_name || '', customerEmail: user?.email || '', customerPhone: profile?.phone || '',
+    promoCode: '', notes: '',
+  });
+  const [slots, setSlots] = useState<Slot[]>([]);
+  const [slotsLoading, setSlotsLoading] = useState(false);
+  const [slotsError, setSlotsError] = useState<string | null>(null);
+  const [pricing, setPricing] = useState<{ base: number; discount: number; final: number; promoId: string | null; promoError: string | null }>({ base: 0, discount: 0, final: 0, promoId: null, promoError: null });
+  const [submitting, setSubmitting] = useState(false);
+  const [confirmData, setConfirmData] = useState<{ code: string; final: number; payAtVenue: boolean } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  // Apply preset when modal opens.
+  useEffect(() => {
+    if (!isOpen) return;
+    setError(null);
+    setConfirmData(null);
+    setS((prev) => ({
+      ...prev,
+      locationId: preset.locationId ?? prev.locationId,
+      sportSlug: preset.sport ?? prev.sportSlug,
+      customerName: profile?.full_name || prev.customerName,
+      customerEmail: user?.email || prev.customerEmail,
+      customerPhone: profile?.phone || prev.customerPhone,
+    }));
+    if (preset.locationId && preset.sport) setStep('court');
+    else if (preset.sport) setStep('location');
+    else setStep('location');
+  }, [isOpen, preset, profile, user]);
+
+  // Lock body scroll.
+  useEffect(() => {
+    if (!isOpen) return;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = ''; };
+  }, [isOpen]);
+
+  const padelSport = useMemo(() => sportBySlug(sports, 'padel'), [sports]);
+  const footballSport = useMemo(() => sportBySlug(sports, 'football'), [sports]);
+
+  const currentSport = s.sportSlug === 'padel' ? padelSport : s.sportSlug === 'football' ? footballSport : null;
+  const currentLocation = locations.find((l) => l.id === s.locationId) || null;
+  const currentCourt = courts.find((c) => c.id === s.courtId) || null;
+  const availableCourts = useMemo(() => {
+    if (!s.locationId || !currentSport) return [];
+    return courtsForLocation(courts, s.locationId, currentSport.id);
+  }, [courts, s.locationId, currentSport]);
+
+  // Load slots whenever court/date/duration change.
+  useEffect(() => {
+    if (step !== 'slot' && step !== 'datetime') return;
+    if (!s.courtId || !s.date) return;
+    setSlotsLoading(true);
+    setSlotsError(null);
+    (async () => {
+      if (!supabase) { setSlotsError('Booking system unavailable.'); setSlotsLoading(false); return; }
+      const { data, error } = await supabase.rpc('get_available_slots', {
+        p_court_id: s.courtId, p_booking_date: s.date,
+      });
+      if (error) { setSlotsError(error.message); setSlotsLoading(false); return; }
+      setSlots((data as Slot[]) || []);
+      setSlotsLoading(false);
+    })();
+  }, [step, s.courtId, s.date]);
+
+  // Recompute price when slot/duration/promo changes.
+  useEffect(() => {
+    if (!s.slot || !s.courtId) { setPricing({ base: 0, discount: 0, final: 0, promoId: null, promoError: null }); return; }
+    const base = Number(s.slot.price_aed || 0);
+    if (!s.promoCode) { setPricing({ base, discount: 0, final: base, promoId: null, promoError: null }); return; }
+    (async () => {
+      if (!supabase || !s.locationId || !currentSport) {
+        setPricing({ base, discount: 0, final: base, promoId: null, promoError: null });
+        return;
+      }
+      const { data, error } = await supabase.rpc('validate_promo_code', {
+        p_code: s.promoCode, p_location_id: s.locationId, p_sport_id: currentSport.id, p_price: base,
+      });
+      if (error || !data) {
+        setPricing({ base, discount: 0, final: base, promoId: null, promoError: error?.message || 'Promo code invalid' });
+        return;
+      }
+      const r = (Array.isArray(data) ? data[0] : data) as {
+        is_valid: boolean; discount_amount: number; promo_code_id: string; error_message: string | null;
+      } | undefined;
+      if (!r || !r.is_valid) {
+        setPricing({ base, discount: 0, final: base, promoId: null, promoError: r?.error_message || 'Promo code invalid' });
+      } else {
+        const disc = Number(r.discount_amount || 0);
+        setPricing({ base, discount: disc, final: Math.max(0, base - disc), promoId: r.promo_code_id, promoError: null });
+      }
+    })();
+  }, [s.slot, s.courtId, s.promoCode, s.locationId, currentSport]);
+
+  if (!isOpen) return null;
+
+  const set = (patch: Partial<StepState>) => setS((prev) => ({ ...prev, ...patch }));
+
+  const stepIndex: Step[] = ['location', 'sport', 'court', 'datetime', 'slot', 'details', 'review', 'confirm'];
+  const currentIdx = stepIndex.indexOf(step);
+
+  const goNext = () => {
+    setError(null);
+    if (step === 'location' && s.locationId) setStep('sport');
+    else if (step === 'sport' && s.sportSlug) setStep('court');
+    else if (step === 'court' && s.courtId) setStep('datetime');
+    else if (step === 'datetime' && s.date) setStep('slot');
+    else if (step === 'slot' && s.slot) setStep('details');
+    else if (step === 'details') {
+      if (!s.customerName.trim() || !s.customerEmail.trim() || !s.customerPhone.trim()) {
+        setError('Please provide your name, email and phone number.');
+        return;
+      }
+      setStep('review');
+    } else if (step === 'review') submitBooking(false);
+  };
+
+  const goBack = () => {
+    setError(null);
+    if (currentIdx > 0) setStep(stepIndex[currentIdx - 1]);
+  };
+
+  const submitBooking = async (payAtVenue: boolean) => {
+    if (!supabase || !s.courtId || !s.date || !s.slot || !currentSport) {
+      setError('Missing booking details. Please go back and complete the form.');
+      return;
+    }
+    setSubmitting(true);
+    setError(null);
+    const { data, error: rpcError } = await supabase.rpc('create_booking', {
+      p_court_id: s.courtId,
+      p_booking_date: s.date,
+      p_start_time: s.slot.start_time,
+      p_duration_minutes: s.slot.duration_minutes,
+      p_customer_name: s.customerName,
+      p_customer_email: s.customerEmail,
+      p_customer_phone: s.customerPhone,
+      p_promo_code: s.promoCode || null,
+      p_notes: s.notes || null,
+    });
+    setSubmitting(false);
+    if (rpcError) { setError(rpcError.message); return; }
+    const row = (data as any)?.[0] || (data as any);
+    if (!row || row.success === false) {
+      setError(row?.error_message || 'Could not create booking. The slot may have just been taken.');
+      return;
+    }
+    setConfirmData({ code: row.booking_code, final: Number(row.final_price_aed), payAtVenue });
+    setStep('confirm');
+  };
+
+  // Payment is NOT live (no gateway configured). We only support pay-at-venue
+  // confirmation, which is an explicitly labeled business policy the customer
+  // opts into. We never simulate an online payment success.
+  const PAYMENT_NOTE = 'Online payment is not yet live. Your reservation is created as pay-at-venue — you confirm at the front desk.';
+
+  const close = () => {
+    closeBooking();
+    setStep('location');
+    setSlots([]);
+    setPricing({ base: 0, discount: 0, final: 0, promoId: null, promoError: null });
+    setConfirmData(null);
+    setError(null);
+  };
+
+  return (
+    <div className="fixed inset-0 z-[90] flex items-center justify-center bg-brand-deepest/90 backdrop-blur-md p-4" onClick={close}>
+      <div
+        className="relative flex max-h-[92vh] w-full max-w-2xl flex-col overflow-hidden rounded-3xl border border-brand-mid/30 bg-brand-deep shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-brand-mid/20 px-6 py-4">
+          <div className="flex items-center gap-3">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-accent/15 text-brand-accent">
+              <Calendar className="h-5 w-5" />
+            </div>
+            <div>
+              <h2 className="font-display text-lg font-bold text-brand-cream">Book a session</h2>
+              <p className="text-xs text-brand-cream/50">Step {Math.min(currentIdx + 1, 8)} of 8</p>
+            </div>
+          </div>
+          <button
+            onClick={close}
+            className="flex h-9 w-9 items-center justify-center rounded-lg text-brand-cream/60 hover:bg-brand-mid/40 hover:text-brand-cream"
+            aria-label="Close"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        {/* Progress bar */}
+        <div className="h-1 w-full bg-brand-mid/20">
+          <div
+            className="h-full bg-brand-accent transition-all duration-500"
+            style={{ width: `${((currentIdx + 1) / 8) * 100}%` }}
+          />
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto px-6 py-6">
+          {facLoading && step === 'location' && (
+            <div className="flex items-center justify-center py-12 text-brand-cream/60">
+              <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Loading facilities…
+            </div>
+          )}
+
+          {/* STEP: location */}
+          {step === 'location' && !facLoading && (
+            <Step title="Choose a location" subtitle="Pick the OnPeak location you want to play at.">
+              <div className="grid gap-3">
+                {locations.length === 0 && (
+                  <ErrorNote>No locations available right now. Please try again later.</ErrorNote>
+                )}
+                {locations.map((loc) => {
+                  const padelCount = courtsForLocation(courts, loc.id, padelSport?.id || '').length;
+                  const footballCount = courtsForLocation(courts, loc.id, footballSport?.id || '').length;
+                  const selected = s.locationId === loc.id;
+                  return (
+                    <button
+                      key={loc.id}
+                      onClick={() => { set({ locationId: loc.id }); setStep('sport'); }}
+                      className={`flex items-start gap-4 rounded-2xl border p-5 text-left transition-all ${
+                        selected ? 'border-brand-accent bg-brand-mid/40' : 'border-brand-mid/20 bg-brand-deepest/40 hover:border-brand-accent/40'
+                      }`}
+                    >
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-accent/10 text-brand-accent">
+                        <MapPin className="h-5 w-5" />
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="font-display text-base font-bold text-brand-cream">{loc.name}</h3>
+                        {loc.address && <p className="mt-1 text-xs text-brand-cream/50">{loc.address}</p>}
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {padelCount > 0 && <Pill>{padelCount} padel {padelCount === 1 ? 'court' : 'courts'}</Pill>}
+                          {footballCount > 0 && <Pill>{footballCount} football {footballCount === 1 ? 'field' : 'fields'}</Pill>}
+                        </div>
+                      </div>
+                      <ChevronRight className="mt-1 h-5 w-5 text-brand-cream/30" />
+                    </button>
+                  );
+                })}
+              </div>
+            </Step>
+          )}
+
+          {/* STEP: sport */}
+          {step === 'sport' && (
+            <Step title="Choose a sport" subtitle="Football fields appear only in football booking, padel courts only in padel.">
+              <div className="grid gap-3 sm:grid-cols-2">
+                {padelSport && (
+                  <SportCard
+                    label="Padel" desc="Premium padel courts"
+                    selected={s.sportSlug === 'padel'}
+                    onClick={() => { set({ sportSlug: 'padel', courtId: null, slot: null }); setStep('court'); }}
+                  />
+                )}
+                {footballSport && (
+                  <SportCard
+                    label="Football" desc="Football fields & pitches"
+                    selected={s.sportSlug === 'football'}
+                    onClick={() => { set({ sportSlug: 'football', courtId: null, slot: null }); setStep('court'); }}
+                  />
+                )}
+              </div>
+            </Step>
+          )}
+
+          {/* STEP: court */}
+          {step === 'court' && (
+            <Step title={`Pick your ${s.sportSlug === 'football' ? 'field' : 'court'}`} subtitle={`Available ${s.sportSlug} resources at ${currentLocation?.name || 'this location'}.`}>
+              {availableCourts.length === 0 ? (
+                <ErrorNote>No {s.sportSlug} resources found at this location.</ErrorNote>
+              ) : (
+                <div className="grid gap-3">
+                  {availableCourts.map((c) => {
+                    const selected = s.courtId === c.id;
+                    const isPink = c.special_marker === 'pink' || c.name.toLowerCase().includes('pink');
+                    return (
+                      <button
+                        key={c.id}
+                        onClick={() => { set({ courtId: c.id, slot: null }); setStep('datetime'); }}
+                        className={`flex items-center gap-4 rounded-2xl border p-5 text-left transition-all ${
+                          isPink ? 'border-pink-400/40' : selected ? 'border-brand-accent bg-brand-mid/40' : 'border-brand-mid/20 bg-brand-deepest/40 hover:border-brand-accent/40'
+                        } ${selected && isPink ? 'bg-pink-500/10' : ''}`}
+                      >
+                        <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
+                          isPink ? 'bg-pink-400/15 text-pink-300' : 'bg-brand-accent/10 text-brand-accent'
+                        }`}>
+                          <CircleDot className="h-5 w-5" />
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <h3 className="font-display text-base font-bold text-brand-cream">{c.name}</h3>
+                            {isPink && (
+                              <span className="rounded-full border border-pink-400/50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-pink-300">
+                                Pink Court
+                              </span>
+                            )}
+                            {c.is_indoor && (
+                              <span className="rounded-full border border-brand-accent/40 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-brand-accent">
+                                Indoor / Covered
+                              </span>
+                            )}
+                          </div>
+                          <p className="mt-1 text-xs text-brand-cream/50">
+                            {s.sportSlug === 'football' ? 'Football field' : 'Padel court'} · {c.is_indoor ? 'Indoor' : 'Outdoor'}
+                          </p>
+                        </div>
+                        <ChevronRight className="h-5 w-5 text-brand-cream/30" />
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </Step>
+          )}
+
+          {/* STEP: datetime */}
+          {step === 'datetime' && (
+            <Step title="Choose a date and duration" subtitle={`Booking ${currentCourt?.name} at ${currentLocation?.name}.`}>
+              <label className="block">
+                <span className="text-xs font-semibold uppercase tracking-widest text-brand-cream/60">Date</span>
+                <input
+                  type="date"
+                  min={todayISO()}
+                  value={s.date}
+                  onChange={(e) => set({ date: e.target.value, slot: null })}
+                  className="mt-2 w-full rounded-xl border border-brand-mid/30 bg-brand-deepest/60 px-4 py-3 text-brand-cream outline-none focus:border-brand-accent"
+                />
+              </label>
+              <div className="mt-5">
+                <span className="text-xs font-semibold uppercase tracking-widest text-brand-cream/60">Duration</span>
+                <div className="mt-2 grid grid-cols-3 gap-2">
+                  {(DURATIONS_BY_SPORT[s.sportSlug!] || [60]).map((d) => {
+                    const sel = s.slot?.duration_minutes === d;
+                    return (
+                      <button
+                        key={d}
+                        onClick={() => set({ slot: { ...s.slot, duration_minutes: d } as Slot })}
+                        className={`rounded-xl border px-3 py-3 text-sm font-bold transition-all ${
+                          sel ? 'border-brand-accent bg-brand-accent text-brand-deepest' : 'border-brand-mid/30 bg-brand-deepest/40 text-brand-cream hover:border-brand-accent/40'
+                        }`}
+                      >
+                        {d} min
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </Step>
+          )}
+
+          {/* STEP: slot */}
+          {step === 'slot' && (
+            <Step title="Available time slots" subtitle={`Loading live availability for ${formatDate(s.date)}.`}>
+              {slotsLoading && (
+                <div className="flex items-center justify-center py-8 text-brand-cream/60">
+                  <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Checking live availability…
+                </div>
+              )}
+              {slotsError && <ErrorNote>{slotsError}</ErrorNote>}
+              {!slotsLoading && !slotsError && (
+                <>
+                  {slots.filter((sl) => sl.is_available).length === 0 ? (
+                    <ErrorNote>No available slots for this date. Try another date.</ErrorNote>
+                  ) : (
+                    <div className="grid gap-2 sm:grid-cols-3">
+                      {slots.filter((sl) => sl.is_available).map((sl) => {
+                        const sel = s.slot?.start_time === sl.start_time && s.slot?.duration_minutes === sl.duration_minutes;
+                        return (
+                          <button
+                            key={`${sl.start_time}-${sl.duration_minutes}`}
+                            onClick={() => set({ slot: sl })}
+                            className={`rounded-xl border px-3 py-3 text-center transition-all ${
+                              sel ? 'border-brand-accent bg-brand-accent text-brand-deepest' : 'border-brand-mid/30 bg-brand-deepest/40 text-brand-cream hover:border-brand-accent/40'
+                            }`}
+                          >
+                            <div className="text-sm font-bold">{formatTime(sl.start_time)}</div>
+                            <div className="mt-0.5 text-[11px] opacity-80">{sl.duration_minutes} min · AED {Number(sl.price_aed).toFixed(0)}</div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </>
+              )}
+            </Step>
+          )}
+
+          {/* STEP: details */}
+          {step === 'details' && (
+            <Step title="Your details" subtitle="We'll use these to confirm your booking.">
+              <div className="grid gap-4">
+                <Field label="Full name">
+                  <input value={s.customerName} onChange={(e) => set({ customerName: e.target.value })} className="op-input" placeholder="Jane Doe" />
+                </Field>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field label="Email">
+                    <input type="email" value={s.customerEmail} onChange={(e) => set({ customerEmail: e.target.value })} className="op-input" placeholder="you@example.com" />
+                  </Field>
+                  <Field label="Phone">
+                    <input value={s.customerPhone} onChange={(e) => set({ customerPhone: e.target.value })} className="op-input" placeholder="+971 …" />
+                  </Field>
+                </div>
+                <Field label="Notes (optional)">
+                  <textarea value={s.notes} onChange={(e) => set({ notes: e.target.value })} rows={2} className="op-input" placeholder="Any special requests" />
+                </Field>
+              </div>
+            </Step>
+          )}
+
+          {/* STEP: review */}
+          {step === 'review' && (
+            <Step title="Review and confirm" subtitle="Please confirm the details below.">
+              <div className="rounded-2xl border border-brand-mid/20 bg-brand-deepest/40 p-5">
+                <ReviewRow icon={<MapPin className="h-4 w-4" />} label="Location" value={currentLocation?.name || '-'} />
+                <ReviewRow icon={<CircleDot className="h-4 w-4" />} label={`${s.sportSlug === 'football' ? 'Field' : 'Court'}`} value={currentCourt?.name || '-'} />
+                <ReviewRow icon={<Calendar className="h-4 w-4" />} label="Date" value={formatDate(s.date)} />
+                {s.slot && (
+                  <>
+                    <ReviewRow icon={<Clock className="h-4 w-4" />} label="Time" value={`${formatTime(s.slot.start_time)} · ${s.slot.duration_minutes} min`} />
+                    <div className="my-3 h-px bg-brand-mid/20" />
+                    <PriceRow label="Base price" value={`AED ${pricing.base.toFixed(2)}`} />
+                    {pricing.discount > 0 && <PriceRow label="Discount" value={`-AED ${pricing.discount.toFixed(2)}`} highlight />}
+                    <div className="my-2 h-px bg-brand-mid/20" />
+                    <PriceRow label="Total" value={`AED ${pricing.final.toFixed(2)}`} bold />
+                  </>
+                )}
+              </div>
+
+              <div className="mt-4">
+                <Field label="Promo code (optional)">
+                  <div className="flex gap-2">
+                    <input value={s.promoCode} onChange={(e) => set({ promoCode: e.target.value.toUpperCase() })} className="op-input" placeholder="SAVE10" />
+                  </div>
+                </Field>
+                {pricing.promoError && <p className="mt-1 text-xs text-red-300">{pricing.promoError}</p>}
+                {pricing.discount > 0 && (
+                  <p className="mt-1 flex items-center gap-1 text-xs text-brand-accent">
+                    <Check className="h-3 w-3" /> Promo applied — you save AED {pricing.discount.toFixed(2)}.
+                  </p>
+                )}
+              </div>
+
+              <div className="mt-4 rounded-xl border border-yellow-400/20 bg-yellow-400/5 p-3 text-xs text-yellow-200/80">
+                <ShieldCheck className="mb-1 inline h-4 w-4" /> {PAYMENT_NOTE}
+              </div>
+
+              {error && <ErrorNote>{error}</ErrorNote>}
+            </Step>
+          )}
+
+          {/* STEP: confirm */}
+          {step === 'confirm' && confirmData && (
+            <div className="flex flex-col items-center py-8 text-center">
+              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-brand-accent/15 text-brand-accent">
+                <Check className="h-8 w-8" />
+              </div>
+              <h3 className="mt-4 font-display text-2xl font-extrabold text-brand-cream">Booking confirmed</h3>
+              <p className="mt-2 text-sm text-brand-cream/60">
+                Your reservation code is{' '}
+                <span className="font-mono font-bold text-brand-accent">{confirmData.code}</span>
+              </p>
+              <p className="mt-1 text-xs text-brand-cream/50">
+                {confirmData.payAtVenue ? 'Pay at venue on arrival.' : `Total AED ${confirmData.final.toFixed(2)}`}
+              </p>
+              <p className="mt-3 max-w-sm text-[11px] text-brand-cream/40">
+                We saved your booking against your account. You can view and cancel it from “My Account”.
+              </p>
+              <button
+                onClick={close}
+                className="mt-6 rounded-full bg-brand-accent px-6 py-3 text-sm font-bold text-brand-deepest transition-colors hover:bg-brand-light"
+              >
+                Done
+              </button>
+            </div>
+          )}
+
+          {error && step !== 'review' && step !== 'confirm' && <ErrorNote>{error}</ErrorNote>}
+        </div>
+
+        {/* Footer nav */}
+        {step !== 'confirm' && (
+          <div className="flex items-center justify-between gap-3 border-t border-brand-mid/20 px-6 py-4">
+            <button
+              onClick={goBack}
+              disabled={currentIdx === 0}
+              className="flex items-center gap-1 rounded-full border border-brand-mid/30 px-4 py-2 text-sm font-semibold text-brand-cream/70 transition-colors hover:border-brand-accent/40 disabled:opacity-40"
+            >
+              <ChevronLeft className="h-4 w-4" /> Back
+            </button>
+            {step === 'review' ? (
+              <button
+                onClick={() => goNext()}
+                disabled={submitting}
+                className="flex items-center gap-2 rounded-full bg-brand-accent px-6 py-2.5 text-sm font-bold text-brand-deepest transition-colors hover:bg-brand-light disabled:opacity-60"
+              >
+                {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                {submitting ? 'Confirming…' : 'Confirm booking'}
+              </button>
+            ) : (
+              <div className="text-xs text-brand-cream/40">
+                {s.slot && step === 'slot' && `AED ${pricing.base.toFixed(2)}`}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Step({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <h3 className="font-display text-xl font-bold text-brand-cream">{title}</h3>
+      <p className="mt-1 text-xs text-brand-cream/50">{subtitle}</p>
+      <div className="mt-5">{children}</div>
+    </div>
+  );
+}
+
+function Pill({ children }: { children: React.ReactNode }) {
+  return <span className="rounded-full bg-brand-mid/40 px-2.5 py-1 text-[11px] font-semibold text-brand-cream/80">{children}</span>;
+}
+
+function SportCard({ label, desc, selected, onClick }: { label: string; desc: string; selected: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`flex flex-col gap-1 rounded-2xl border p-6 text-left transition-all ${
+        selected ? 'border-brand-accent bg-brand-mid/40' : 'border-brand-mid/20 bg-brand-deepest/40 hover:border-brand-accent/40'
+      }`}
+    >
+      <div className="flex items-center gap-2">
+        <Building2 className="h-5 w-5 text-brand-accent" />
+        <h4 className="font-display text-lg font-bold text-brand-cream">{label}</h4>
+      </div>
+      <p className="text-xs text-brand-cream/50">{desc}</p>
+    </button>
+  );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label className="block">
+      <span className="text-xs font-semibold uppercase tracking-widest text-brand-cream/60">{label}</span>
+      <div className="mt-2">{children}</div>
+    </label>
+  );
+}
+
+function ReviewRow({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between py-1.5">
+      <span className="flex items-center gap-2 text-xs uppercase tracking-wider text-brand-cream/50">
+        {icon} {label}
+      </span>
+      <span className="text-sm font-semibold text-brand-cream">{value}</span>
+    </div>
+  );
+}
+
+function PriceRow({ label, value, bold, highlight }: { label: string; value: string; bold?: boolean; highlight?: boolean }) {
+  return (
+    <div className="flex items-center justify-between py-1">
+      <span className={`text-xs ${bold ? 'font-bold text-brand-cream' : 'text-brand-cream/60'}`}>{label}</span>
+      <span className={`text-sm ${bold ? 'font-extrabold text-brand-cream' : highlight ? 'font-semibold text-brand-accent' : 'font-semibold text-brand-cream/80'}`}>{value}</span>
+    </div>
+  );
+}
+
+function ErrorNote({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex items-start gap-2 rounded-xl border border-red-400/30 bg-red-400/10 p-3 text-sm text-red-200">
+      <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+      <span>{children}</span>
+    </div>
+  );
+}

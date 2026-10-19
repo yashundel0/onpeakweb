@@ -447,6 +447,12 @@ export default function BookingModal() {
           {/* STEP: details */}
           {step === 'details' && (
             <Step title="Your details" subtitle="We'll use these to confirm your booking.">
+              {!user && (
+                <div className="mb-4 flex items-start gap-2 rounded-xl border border-brand-accent/30 bg-brand-accent/10 p-3 text-sm text-brand-cream/80">
+                  <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-brand-accent" />
+                  <span>Please sign in to confirm your booking. You can still browse availability as a guest.</span>
+                </div>
+              )}
               <div className="grid gap-4">
                 <Field label="Full name">
                   <input value={s.customerName} onChange={(e) => set({ customerName: e.target.value })} className="op-input" placeholder="Jane Doe" />

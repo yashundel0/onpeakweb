@@ -3,13 +3,14 @@ import { Menu, X, Calendar, User as UserIcon, LogOut, Shield, ChevronDown } from
 import { nav, club } from '@/data/clubData';
 import { useAuth } from '@/context/AuthContext';
 import { useBooking } from '@/context/BookingContext';
+import { navigate } from '@/lib/router';
 
 const LOGO = '/onpeakweb/assets/images/Изображение_PNG_8.png';
 
 interface HeaderProps {
   onOpenAuth: () => void;
   onOpenAccount: () => void;
-  onOpenAdmin: () => void;
+  onOpenAdmin?: () => void;
 }
 
 export default function Header({ onOpenAuth, onOpenAccount, onOpenAdmin }: HeaderProps) {
@@ -87,7 +88,7 @@ export default function Header({ onOpenAuth, onOpenAccount, onOpenAdmin }: Heade
                       <UserIcon className="h-4 w-4" /> My bookings
                     </button>
                     {isAdmin && (
-                      <button onClick={() => { setAcctMenu(false); onOpenAdmin(); }} className="flex w-full items-center gap-2 px-4 py-3 text-sm text-brand-cream/80 hover:bg-brand-mid/40">
+                      <button onClick={() => { setAcctMenu(false); onOpenAdmin ? onOpenAdmin() : navigate('/admin'); }} className="flex w-full items-center gap-2 px-4 py-3 text-sm text-brand-cream/80 hover:bg-brand-mid/40">
                         <Shield className="h-4 w-4" /> Admin dashboard
                       </button>
                     )}
@@ -178,7 +179,7 @@ export default function Header({ onOpenAuth, onOpenAccount, onOpenAdmin }: Heade
                   <UserIcon className="h-4 w-4" /> My bookings
                 </button>
                 {isAdmin && (
-                  <button onClick={() => { setMenuOpen(false); onOpenAdmin(); }} className="flex items-center gap-2 rounded-xl px-4 py-3 text-sm text-brand-cream/80 hover:bg-brand-mid/40">
+                  <button onClick={() => { setMenuOpen(false); onOpenAdmin ? onOpenAdmin() : navigate('/admin'); }} className="flex items-center gap-2 rounded-xl px-4 py-3 text-sm text-brand-cream/80 hover:bg-brand-mid/40">
                     <Shield className="h-4 w-4" /> Admin
                   </button>
                 )}

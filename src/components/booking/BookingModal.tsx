@@ -136,12 +136,13 @@ export default function BookingModal() {
       return;
     }
     setPriceLoading(true);
+    const slot = s.selectedSlot;
     (async () => {
-      if (!supabase) { setPriceLoading(false); return; }
+      if (!supabase || !slot) { setPriceLoading(false); return; }
       const { data, error } = await supabase.rpc('get_court_price', {
         p_court_id: s.courtId,
         p_duration: s.durationMinutes,
-        p_slot_start: s.selectedSlot.start_time,
+        p_slot_start: slot.start_time,
         p_booking_date: s.date,
       });
       if (error) { setPriceQuote(null); setPriceLoading(false); return; }

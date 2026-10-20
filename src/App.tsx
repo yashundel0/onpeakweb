@@ -15,23 +15,33 @@ import ErrorBoundary from '@/components/ErrorBoundary';
 import BookingModal from '@/components/booking/BookingModal';
 import AuthModal from '@/components/auth/AuthModal';
 import MyAccount from '@/components/auth/MyAccount';
-import AdminDashboard from '@/components/admin/AdminDashboard';
+import AdminApp from '@/components/admin/AdminApp';
+import AdminLogin from '@/components/admin/AdminLogin';
 import { useScrollReveal } from '@/hooks/useScrollReveal';
 import { AuthProvider } from '@/context/AuthContext';
 import { BookingProvider } from '@/context/BookingContext';
+import { useRouter, isAdminRoute, navigate } from '@/lib/router';
 
-type Overlay = 'none' | 'auth' | 'account' | 'admin';
+type Overlay = 'none' | 'auth' | 'account';
 
 function AppInner() {
   useScrollReveal();
+  const path = useRouter();
   const [overlay, setOverlay] = useState<Overlay>('none');
+
+  // Admin routes render as full-page views, separate from the public site
+  if (isAdminRoute(path)) {
+    if (path === '/admin/login') {
+      return <AdminLogin />;
+    }
+    return <AdminApp />;
+  }
 
   return (
     <div className="min-h-screen bg-forest-darkest">
       <Header
         onOpenAuth={() => setOverlay('auth')}
         onOpenAccount={() => setOverlay('account')}
-        onOpenAdmin={() => setOverlay('admin')}
       />
       <main>
         <Hero />
@@ -50,9 +60,8 @@ function AppInner() {
       <BookingModal />
       {overlay === 'auth' && <AuthModal onClose={() => setOverlay('none')} />}
       {overlay === 'account' && (
-        <MyAccount onClose={() => setOverlay('none')} onOpenAdmin={() => setOverlay('admin')} />
+        <MyAccount onClose={() => setOverlay('none')} onOpenAdmin={() => navigate('/admin')} />
       )}
-      {overlay === 'admin' && <AdminDashboard onClose={() => setOverlay('none')} />}
     </div>
   );
 }

@@ -59,9 +59,12 @@ function startOfWeek(d: Date): Date {
   return r;
 }
 
-export default function AdminDashboard({ onClose }: { onClose: () => void }) {
+export default function AdminDashboard({ route = 'overview', onClose }: { route?: Tab; onClose?: () => void }) {
   const { isAdmin, loading: authLoading } = useAuth();
-  const [tab, setTab] = useState<Tab>('overview');
+  const [tab, setTab] = useState<Tab>(route);
+
+  // Sync internal tab when the route prop changes
+  useEffect(() => { setTab(route); }, [route]);
 
   const [locations, setLocations] = useState<Location[]>([]);
   const [sports, setSports] = useState<Sport[]>([]);
@@ -212,7 +215,7 @@ export default function AdminDashboard({ onClose }: { onClose: () => void }) {
           )}
 
           {!loading && tab === 'overview' && (
-            <OverviewTab todayCount={todayBookings.length} revenue={todaysRevenue} confirmed={confirmedCount} pending={pendingCount} cancelled={cancelledCount} activeCourts={activeCourts} recent={bookings.slice(0, 5)} locName={locName} courtName={courtName} sportName={sportName} />
+            <OverviewTab todayBookings={todayBookings} revenue={todaysRevenue} confirmed={confirmedCount} pending={pendingCount} cancelled={cancelledCount} activeCourts={activeCourts} locName={locName} courtName={courtName} sportName={sportName} />
           )}
           {!loading && tab === 'bookings' && (
             <BookingsTab bookings={bookings} locations={locations} sports={sports} courts={courts} locName={locName} courtName={courtName} sportName={sportName} sportSlug={sportSlug} fmtDate={fmtDate} fmtTime={fmtTime} onChanged={load} />
@@ -248,14 +251,15 @@ export default function AdminDashboard({ onClose }: { onClose: () => void }) {
 // ---------------------------------------------------------------------------
 // Overview
 // ---------------------------------------------------------------------------
-function OverviewTab({ todayCount, revenue, confirmed, pending, cancelled, activeCourts, recent, locName, courtName, sportName }: {
-  todayCount: number; revenue: number; confirmed: number; pending: number; cancelled: number; activeCourts: number;
-  recent: Booking[]; locName: (id: string) => string; courtName: (id: string) => string; sportName: (id: string) => string;
+function OverviewTab({ todayBookings, revenue, confirmed, pending, cancelled, activeCourts, locName, courtName, sportName }: {
+  todayBookings: Booking[]; revenue: number; confirmed: number; pending: number; cancelled: number; activeCourts: number;
+  locName: (id: string) => string; courtName: (id: string) => string; sportName: (id: string) => string;
 }) {
+  const sorted = [...todayBookings].sort((a, b) => a.start_time.localeCompare(b.start_time));
   return (
     <div className="space-y-6">
       <div className="grid gap-4 md:grid-cols-3">
-        <Metric label="Today's bookings" value={todayCount} />
+        <Metric label="Today's bookings" value={todayBookings.length} />
         <Metric label="Today's revenue" value={`AED ${revenue.toFixed(2)}`} />
         <Metric label="Confirmed" value={confirmed} />
         <Metric label="Pending" value={pending} />
@@ -263,20 +267,31 @@ function OverviewTab({ todayCount, revenue, confirmed, pending, cancelled, activ
         <Metric label="Available courts/fields" value={activeCourts} />
       </div>
       <div>
-        <h3 className="font-display text-sm font-bold uppercase tracking-widest text-brand-cream/60">Recent bookings</h3>
-        <div className="mt-3 space-y-2">
-          {recent.length === 0 && <EmptyState>No bookings yet.</EmptyState>}
-          {recent.map((b) => (
-            <div key={b.id} className="flex items-center justify-between rounded-xl border border-brand-mid/20 bg-brand-deep p-3 text-xs">
-              <div>
-                <span className="font-mono font-bold text-brand-accent">{b.booking_code}</span>
-                <span className="ml-2 text-brand-cream">{b.customer_name || '—'}</span>
-              </div>
-              <div className="text-brand-cream/60">
-                {courtName(b.court_id)} · {sportName(b.sport_id)} · {fmtDate(b.booking_date)} · {fmtTime(b.start_time)}
-              </div>
+        <h3 className="font-display text-sm font-bold uppercase tracking-widest text-brand-cream/60">Today's bookings</h3>
+        <div className="mt-3">
+          {sorted.length === 0 ? (
+            <EmptyState>No bookings scheduled for today.</EmptyState>
+          ) : (
+            <div className="overflow-x-auto rounded-2xl border border-brand-mid/20">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-brand-deep text-brand-cream/60">
+                  <tr><Th>Time</Th><Th>Customer</Th><Th>Facility</Th><Th>Court/Field</Th><Th>Status</Th><Th>Payment</Th></tr>
+                </thead>
+                <tbody>
+                  {sorted.map((b) => (
+                    <tr key={b.id} className="border-t border-brand-mid/15">
+                      <Td><span className="font-bold text-brand-cream">{fmtTime(b.start_time)}</span><br /><span className="text-brand-cream/40">{b.duration_minutes}m</span></Td>
+                      <Td>{b.customer_name || '—'}</Td>
+                      <Td>{sportName(b.sport_id)}<br /><span className="text-brand-cream/40">{locName(b.location_id)}</span></Td>
+                      <Td>{courtName(b.court_id)}</Td>
+                      <Td><span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${statusBadgeClass(b.booking_status)}`}>{b.booking_status}</span></Td>
+                      <Td><span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${paymentBadgeClass(b.payment_status)}`}>{paymentLabel(b.payment_status)}</span></Td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-          ))}
+          )}
         </div>
       </div>
     </div>
@@ -517,10 +532,11 @@ function BookingDetail({ booking, locations, sports, courts, locName, courtName,
   const [err, setErr] = useState<string | null>(null);
 
   if (!supabase) return null;
+  const sb = supabase;
 
   const saveNotes = async () => {
     setSaving(true);
-    const { error } = await supabase.rpc('update_booking_admin', {
+    const { error } = await sb.rpc('update_booking_admin', {
       p_booking_id: booking.id, p_admin_notes: adminNotes, p_notes: customerNotes,
     });
     setSaving(false);
@@ -533,7 +549,7 @@ function BookingDetail({ booking, locations, sports, courts, locName, courtName,
     if (!newDate || !newStart) { setErr('Date and start time required.'); return; }
     const endTime = addMinutesTime(newStart, booking.duration_minutes);
     setSaving(true); setErr(null);
-    const { data, error } = await supabase.rpc('reschedule_booking', {
+    const { data, error } = await sb.rpc('reschedule_booking', {
       p_booking_id: booking.id,
       p_new_date: newDate,
       p_new_start_time: newStart,

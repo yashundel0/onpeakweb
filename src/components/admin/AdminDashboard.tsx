@@ -215,7 +215,7 @@ export default function AdminDashboard({ route = 'overview', onClose }: { route?
           )}
 
           {!loading && tab === 'overview' && (
-            <OverviewTab todayBookings={todayBookings} revenue={todaysRevenue} confirmed={confirmedCount} pending={pendingCount} cancelled={cancelledCount} activeCourts={activeCourts} locName={locName} courtName={courtName} sportName={sportName} />
+            <OverviewTab todayBookings={todayBookings} allBookings={bookings} revenue={todaysRevenue} confirmed={confirmedCount} pending={pendingCount} cancelled={cancelledCount} activeCourts={activeCourts} locName={locName} courtName={courtName} sportName={sportName} />
           )}
           {!loading && tab === 'bookings' && (
             <BookingsTab bookings={bookings} locations={locations} sports={sports} courts={courts} locName={locName} courtName={courtName} sportName={sportName} sportSlug={sportSlug} fmtDate={fmtDate} fmtTime={fmtTime} onChanged={load} />
@@ -251,47 +251,107 @@ export default function AdminDashboard({ route = 'overview', onClose }: { route?
 // ---------------------------------------------------------------------------
 // Overview
 // ---------------------------------------------------------------------------
-function OverviewTab({ todayBookings, revenue, confirmed, pending, cancelled, activeCourts, locName, courtName, sportName }: {
-  todayBookings: Booking[]; revenue: number; confirmed: number; pending: number; cancelled: number; activeCourts: number;
+function OverviewTab({ todayBookings, allBookings, revenue, confirmed, pending, cancelled, activeCourts, locName, courtName, sportName }: {
+  todayBookings: Booking[]; allBookings: Booking[]; revenue: number; confirmed: number; pending: number; cancelled: number; activeCourts: number;
   locName: (id: string) => string; courtName: (id: string) => string; sportName: (id: string) => string;
 }) {
   const sorted = [...todayBookings].sort((a, b) => a.start_time.localeCompare(b.start_time));
+  const today = todayISO();
+  const upcoming = allBookings
+    .filter((b) => b.booking_date > today && b.booking_status !== 'cancelled')
+    .sort((a, b) => a.booking_date.localeCompare(b.booking_date) || a.start_time.localeCompare(b.start_time))
+    .slice(0, 5);
+
+  // 7-day revenue trend
+  const last7 = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(); d.setDate(d.getDate() - (6 - i));
+    const iso = d.toISOString().slice(0, 10);
+    const dayRev = allBookings
+      .filter((b) => b.booking_date === iso && b.payment_status === 'paid')
+      .reduce((sum, b) => sum + Number(b.final_price_aed), 0);
+    return { label: d.toLocaleDateString('en-GB', { weekday: 'short' }), value: dayRev };
+  });
+  const maxRev = Math.max(...last7.map((x) => x.value), 1);
+
   return (
     <div className="space-y-6">
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-6">
         <Metric label="Today's bookings" value={todayBookings.length} />
-        <Metric label="Today's revenue" value={`AED ${revenue.toFixed(2)}`} />
+        <Metric label="Today's revenue" value={`AED ${revenue.toFixed(0)}`} />
+        <Metric label="Total bookings" value={allBookings.length} />
         <Metric label="Confirmed" value={confirmed} />
         <Metric label="Pending" value={pending} />
         <Metric label="Cancelled" value={cancelled} />
-        <Metric label="Available courts/fields" value={activeCourts} />
       </div>
-      <div>
-        <h3 className="font-display text-sm font-bold uppercase tracking-widest text-brand-cream/60">Today's bookings</h3>
-        <div className="mt-3">
-          {sorted.length === 0 ? (
-            <EmptyState>No bookings scheduled for today.</EmptyState>
-          ) : (
-            <div className="overflow-x-auto rounded-2xl border border-brand-mid/20">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-brand-deep text-brand-cream/60">
-                  <tr><Th>Time</Th><Th>Customer</Th><Th>Facility</Th><Th>Court/Field</Th><Th>Status</Th><Th>Payment</Th></tr>
-                </thead>
-                <tbody>
-                  {sorted.map((b) => (
-                    <tr key={b.id} className="border-t border-brand-mid/15">
-                      <Td><span className="font-bold text-brand-cream">{fmtTime(b.start_time)}</span><br /><span className="text-brand-cream/40">{b.duration_minutes}m</span></Td>
-                      <Td>{b.customer_name || '—'}</Td>
-                      <Td>{sportName(b.sport_id)}<br /><span className="text-brand-cream/40">{locName(b.location_id)}</span></Td>
-                      <Td>{courtName(b.court_id)}</Td>
-                      <Td><span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${statusBadgeClass(b.booking_status)}`}>{b.booking_status}</span></Td>
-                      <Td><span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${paymentBadgeClass(b.payment_status)}`}>{paymentLabel(b.payment_status)}</span></Td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+
+      {/* 7-day revenue trend */}
+      <div className="rounded-2xl border border-brand-mid/20 bg-brand-deep p-5">
+        <h3 className="font-display text-sm font-bold uppercase tracking-widest text-brand-cream/60">Revenue — last 7 days</h3>
+        <div className="mt-4 flex items-end justify-between gap-2" style={{ height: 120 }}>
+          {last7.map((d, i) => (
+            <div key={i} className="flex flex-1 flex-col items-center gap-1">
+              <span className="text-[9px] font-semibold text-brand-cream/50">{d.value > 0 ? `AED ${d.value.toFixed(0)}` : ''}</span>
+              <div className="flex w-full items-end justify-center" style={{ height: 80 }}>
+                <div
+                  className="w-full max-w-[40px] rounded-t bg-brand-accent/70 transition-all hover:bg-brand-accent"
+                  style={{ height: `${Math.max((d.value / maxRev) * 80, 2)}px` }}
+                />
+              </div>
+              <span className="text-[10px] text-brand-cream/40">{d.label}</span>
             </div>
-          )}
+          ))}
+        </div>
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        <div>
+          <h3 className="font-display text-sm font-bold uppercase tracking-widest text-brand-cream/60">Today's bookings</h3>
+          <div className="mt-3">
+            {sorted.length === 0 ? (
+              <EmptyState>No bookings scheduled for today.</EmptyState>
+            ) : (
+              <div className="overflow-x-auto rounded-2xl border border-brand-mid/20">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-brand-deep text-brand-cream/60">
+                    <tr><Th>Time</Th><Th>Customer</Th><Th>Facility</Th><Th>Court/Field</Th><Th>Status</Th><Th>Payment</Th></tr>
+                  </thead>
+                  <tbody>
+                    {sorted.map((b) => (
+                      <tr key={b.id} className="border-t border-brand-mid/15">
+                        <Td><span className="font-bold text-brand-cream">{fmtTime(b.start_time)}</span><br /><span className="text-brand-cream/40">{b.duration_minutes}m</span></Td>
+                        <Td>{b.customer_name || '—'}</Td>
+                        <Td>{sportName(b.sport_id)}<br /><span className="text-brand-cream/40">{locName(b.location_id)}</span></Td>
+                        <Td>{courtName(b.court_id)}</Td>
+                        <Td><span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${statusBadgeClass(b.booking_status)}`}>{b.booking_status}</span></Td>
+                        <Td><span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${paymentBadgeClass(b.payment_status)}`}>{paymentLabel(b.payment_status)}</span></Td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div>
+          <h3 className="font-display text-sm font-bold uppercase tracking-widest text-brand-cream/60">Upcoming bookings</h3>
+          <div className="mt-3 space-y-2">
+            {upcoming.length === 0 ? (
+              <EmptyState>No upcoming bookings.</EmptyState>
+            ) : (
+              upcoming.map((b) => (
+                <div key={b.id} className="flex items-center justify-between rounded-xl border border-brand-mid/20 bg-brand-deep p-3 text-xs">
+                  <div>
+                    <span className="font-mono font-bold text-brand-accent">{b.booking_code}</span>
+                    <span className="ml-2 text-brand-cream">{b.customer_name || '—'}</span>
+                  </div>
+                  <div className="text-brand-cream/60">
+                    {courtName(b.court_id)} · {fmtDate(b.booking_date)} · {fmtTime(b.start_time)}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
         </div>
       </div>
     </div>

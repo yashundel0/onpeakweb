@@ -71,6 +71,7 @@ export interface Booking {
   customer_phone: string | null;
   notes: string | null;
   admin_notes: string | null;
+  players_count: number | null;
   created_at: string;
   updated_at: string;
 }

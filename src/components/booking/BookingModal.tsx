@@ -2,12 +2,46 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   X, Calendar, Clock, MapPin, ChevronRight, ChevronLeft, Check,
   Loader2, AlertCircle, Tag, CircleDot, Building2, ShieldCheck, CreditCard,
+  CalendarPlus, MessageCircle, User as UserIcon,
 } from 'lucide-react';
 import { useBooking } from '@/context/BookingContext';
 import { useFacilities, courtsForLocation, sportBySlug } from '@/hooks/useFacilities';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { Slot } from '@/lib/types';
+import { whatsappLink } from '@/data/clubData';
+
+interface ConfirmData {
+  code: string; final: number; price: number; discount: number;
+  sport: string; location: string; court: string;
+  date: string; startTime: string; endTime: string; duration: number;
+  customerName: string; paymentStatus: string;
+}
+
+function buildCalendarEvent(d: ConfirmData): string {
+  const dt = `${d.date.replace(/-/g, '')}T${d.startTime.replace(/:/g, '')}00`;
+  const dtEnd = `${d.date.replace(/-/g, '')}T${d.endTime.replace(/:/g, '')}00`;
+  const title = `OnPeak ${d.sport} — ${d.court} (${d.code})`;
+  const desc = `Booking ${d.code}\n${d.sport} at ${d.court}, ${d.location}\nCustomer: ${d.customerName}\nDuration: ${d.duration} min`;
+  return [
+    'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//OnPeak//Booking//EN',
+    'BEGIN:VEVENT', `UID:${d.code}@onpeak.ae`,
+    `DTSTAMP:${dt}`, `DTSTART:${dt}`, `DTEND:${dtEnd}`,
+    `SUMMARY:${title}`, `DESCRIPTION:${desc.replace(/\n/g, '\\n')}`,
+    'END:VEVENT', 'END:VCALENDAR',
+  ].join('\r\n');
+}
+
+function downloadCalendar(d: ConfirmData) {
+  const ics = buildCalendarEvent(d);
+  const blob = new Blob([ics], { type: 'text/calendar' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `onpeak-booking-${d.code}.ics`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 type Step = 'location' | 'sport' | 'court' | 'datetime' | 'slot' | 'duration' | 'details' | 'review' | 'confirm';
 
@@ -75,7 +109,7 @@ export default function BookingModal() {
   const [priceLoading, setPriceLoading] = useState(false);
   const [promoDiscount, setPromoDiscount] = useState<{ discount: number; promoId: string | null; error: string | null }>({ discount: 0, promoId: null, error: null });
   const [submitting, setSubmitting] = useState(false);
-  const [confirmData, setConfirmData] = useState<{ code: string; final: number } | null>(null);
+  const [confirmData, setConfirmData] = useState<ConfirmData | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -251,7 +285,21 @@ export default function BookingModal() {
       setError(row?.error_message || 'Could not create booking. The slot may have just been taken.');
       return;
     }
-    setConfirmData({ code: row.booking_code, final: Number(row.final_price_aed) });
+    setConfirmData({
+      code: row.booking_code,
+      final: Number(row.final_price_aed),
+      price: Number(row.price_aed),
+      discount: Number(row.discount_aed),
+      sport: currentSport?.name || s.sportSlug || '',
+      location: currentLocation?.name || '',
+      court: currentCourt?.name || '',
+      date: s.date,
+      startTime: s.selectedSlot.start_time,
+      endTime: addMinutes(s.selectedSlot.start_time, s.durationMinutes),
+      duration: s.durationMinutes,
+      customerName: s.customerName,
+      paymentStatus: 'Pay at Venue',
+    });
     setStep('confirm');
   };
 
@@ -627,27 +675,101 @@ export default function BookingModal() {
 
           {/* STEP: confirm */}
           {step === 'confirm' && confirmData && (
-            <div className="flex flex-col items-center py-8 text-center">
+            <div className="flex flex-col items-center py-6 text-center">
               <div className="flex h-16 w-16 items-center justify-center rounded-full bg-brand-accent/15 text-brand-accent">
                 <Check className="h-8 w-8" />
               </div>
               <h3 className="mt-4 font-display text-2xl font-extrabold text-brand-cream">Booking Confirmed!</h3>
               <p className="mt-2 text-sm text-brand-cream/60">
-                Your reservation code is{' '}
+                Your reservation number is{' '}
                 <span className="font-mono font-bold text-brand-accent">{confirmData.code}</span>
               </p>
-              <div className="mt-4 flex w-full max-w-xs flex-col items-center gap-1 rounded-2xl border border-forest-glow/30 bg-forest-glow/10 px-6 py-4">
-                <span className="text-xs font-semibold uppercase tracking-widest text-forest-soft/60">Payment</span>
-                <span className="mt-1 font-display text-xl font-extrabold text-forest-glow">Pay at Venue</span>
-                <span className="mt-1 text-xs text-brand-cream/50">Total: AED {confirmData.final.toFixed(2)}</span>
-                <p className="mt-2 text-center text-[11px] text-brand-cream/40">Please pay when you arrive at the OnPeak location.</p>
+
+              {/* Full booking details */}
+              <div className="mt-5 w-full max-w-sm rounded-2xl border border-brand-mid/20 bg-brand-deepest/50 p-5 text-left">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="flex items-center gap-2 text-xs uppercase tracking-wider text-brand-cream/50"><UserIcon className="h-3.5 w-3.5" /> Customer</span>
+                    <span className="text-sm font-semibold text-brand-cream">{confirmData.customerName}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="flex items-center gap-2 text-xs uppercase tracking-wider text-brand-cream/50"><Building2 className="h-3.5 w-3.5" /> Sport</span>
+                    <span className="text-sm font-semibold text-brand-cream">{confirmData.sport}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="flex items-center gap-2 text-xs uppercase tracking-wider text-brand-cream/50"><MapPin className="h-3.5 w-3.5" /> Location</span>
+                    <span className="text-sm font-semibold text-brand-cream">{confirmData.location}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="flex items-center gap-2 text-xs uppercase tracking-wider text-brand-cream/50"><CircleDot className="h-3.5 w-3.5" /> Court/Field</span>
+                    <span className="text-sm font-semibold text-brand-cream">{confirmData.court}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="flex items-center gap-2 text-xs uppercase tracking-wider text-brand-cream/50"><Calendar className="h-3.5 w-3.5" /> Date</span>
+                    <span className="text-sm font-semibold text-brand-cream">{formatDate(confirmData.date)}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="flex items-center gap-2 text-xs uppercase tracking-wider text-brand-cream/50"><Clock className="h-3.5 w-3.5" /> Start</span>
+                    <span className="text-sm font-semibold text-brand-cream">{formatTime(confirmData.startTime)}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="flex items-center gap-2 text-xs uppercase tracking-wider text-brand-cream/50"><Clock className="h-3.5 w-3.5" /> End</span>
+                    <span className="text-sm font-semibold text-brand-cream">{formatTime(confirmData.endTime)}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs uppercase tracking-wider text-brand-cream/50">Duration</span>
+                    <span className="text-sm font-semibold text-brand-cream">{confirmData.duration} min</span>
+                  </div>
+                  {confirmData.discount > 0 && (
+                    <>
+                      <div className="flex items-center justify-between border-t border-brand-mid/15 pt-2">
+                        <span className="text-xs uppercase tracking-wider text-brand-cream/50">Price</span>
+                        <span className="text-sm font-semibold text-brand-cream/70 line-through">AED {confirmData.price.toFixed(2)}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs uppercase tracking-wider text-brand-cream/50">Discount</span>
+                        <span className="text-sm font-semibold text-brand-accent">- AED {confirmData.discount.toFixed(2)}</span>
+                      </div>
+                    </>
+                  )}
+                  <div className="flex items-center justify-between border-t border-brand-mid/15 pt-2">
+                    <span className="text-xs font-bold uppercase tracking-wider text-brand-cream/60">Total</span>
+                    <span className="font-display text-lg font-extrabold text-brand-cream">AED {confirmData.final.toFixed(2)}</span>
+                  </div>
+                </div>
               </div>
+
+              {/* Payment status */}
+              <div className="mt-3 flex w-full max-w-xs flex-col items-center gap-1 rounded-2xl border border-forest-glow/30 bg-forest-glow/10 px-6 py-3">
+                <span className="text-xs font-semibold uppercase tracking-widest text-forest-soft/60">Payment</span>
+                <span className="font-display text-base font-bold text-forest-glow">{confirmData.paymentStatus}</span>
+                <p className="mt-1 text-center text-[11px] text-brand-cream/40">Please pay when you arrive at the OnPeak location.</p>
+              </div>
+
+              {/* Action buttons */}
+              <div className="mt-5 flex flex-wrap items-center justify-center gap-3">
+                <button
+                  onClick={() => downloadCalendar(confirmData)}
+                  className="flex items-center gap-2 rounded-full border border-brand-accent/40 bg-brand-accent/10 px-5 py-2.5 text-sm font-bold text-brand-accent transition-colors hover:bg-brand-accent/20"
+                >
+                  <CalendarPlus className="h-4 w-4" /> Add to Calendar
+                </button>
+                <a
+                  href={whatsappLink(`Hello OnPeak! I have a booking: ${confirmData.code} — ${confirmData.sport} at ${confirmData.court}, ${formatDate(confirmData.date)} ${formatTime(confirmData.startTime)}. I have a question about my reservation.`)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 rounded-full border border-green-400/40 bg-green-400/10 px-5 py-2.5 text-sm font-bold text-green-300 transition-colors hover:bg-green-400/20"
+                >
+                  <MessageCircle className="h-4 w-4" /> Contact on WhatsApp
+                </a>
+              </div>
+
               <p className="mt-4 max-w-sm text-[11px] text-brand-cream/40">
-                Your booking is saved to your account. You can view or cancel it from "My Bookings".
+                Your booking is saved. You can view or cancel it from "My Bookings" in your account.
               </p>
               <button
                 onClick={close}
-                className="mt-6 rounded-full bg-brand-accent px-6 py-3 text-sm font-bold text-brand-deepest transition-colors hover:bg-brand-light"
+                className="mt-5 rounded-full bg-brand-accent px-6 py-3 text-sm font-bold text-brand-deepest transition-colors hover:bg-brand-light"
               >
                 Done
               </button>

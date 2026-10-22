@@ -3,7 +3,7 @@ import { supabase } from '@/lib/supabase';
 import type { useAdminData } from '@/hooks/useAdminData';
 import { fmtRelative } from '@/lib/utils';
 import { navigate } from '@/lib/router';
-import { Bell, Check, Loader2, X } from 'lucide-react';
+import { Bell, Check, Loader2 } from 'lucide-react';
 
 type AdminData = ReturnType<typeof useAdminData>;
 

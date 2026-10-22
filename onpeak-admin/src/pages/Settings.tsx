@@ -1,6 +1,6 @@
 import { useAuth } from '@/context/AuthContext';
 import type { useAdminData } from '@/hooks/useAdminData';
-import { Shield, Mail, Phone, Building2, Activity } from 'lucide-react';
+import { Shield, Mail, Phone, Building2 } from 'lucide-react';
 
 type AdminData = ReturnType<typeof useAdminData>;
 

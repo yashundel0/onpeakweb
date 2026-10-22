@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import type { useAdminData } from '@/hooks/useAdminData';
 import { todayISO, fmtTime, fmtDate, statusBadgeClass, paymentBadgeClass, paymentLabel } from '@/lib/utils';
-import { Calendar, Clock, MapPin, CircleDot, TrendingUp, CheckCircle2, XCircle, Hourglass } from 'lucide-react';
+import { Calendar, Clock, TrendingUp, CheckCircle2, XCircle, Hourglass } from 'lucide-react';
 import { navigate } from '@/lib/router';
 
 type AdminData = ReturnType<typeof useAdminData>;

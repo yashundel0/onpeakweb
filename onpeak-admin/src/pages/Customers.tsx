@@ -1,9 +1,9 @@
 import { useState, useMemo } from 'react';
 import type { useAdminData } from '@/hooks/useAdminData';
 import type { Booking } from '@/lib/types';
-import { fmtDate, fmtDateTime, statusBadgeClass, paymentBadgeClass, paymentLabel } from '@/lib/utils';
+import { fmtDate, statusBadgeClass, paymentBadgeClass, paymentLabel } from '@/lib/utils';
 import { navigate } from '@/lib/router';
-import { Search, X, Phone, Mail, Calendar, Clock } from 'lucide-react';
+import { Search, X, Phone, Mail } from 'lucide-react';
 
 type AdminData = ReturnType<typeof useAdminData>;
 

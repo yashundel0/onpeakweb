@@ -3,7 +3,7 @@ import type { useAdminData } from '@/hooks/useAdminData';
 import type { Booking } from '@/lib/types';
 import { fmtTime, fmtDate, statusBadgeClass } from '@/lib/utils';
 import { navigate } from '@/lib/router';
-import { ChevronLeft, ChevronRight, CalendarDays } from 'lucide-react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 type AdminData = ReturnType<typeof useAdminData>;
 type View = 'day' | 'week' | 'month';

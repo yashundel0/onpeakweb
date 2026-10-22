@@ -132,6 +132,7 @@ function StatusBadge({ status }: { status: string }) {
     confirmed: 'border-brand-accent/50 text-brand-accent',
     completed: 'border-blue-400/40 text-blue-300',
     cancelled: 'border-red-400/40 text-red-300',
+    no_show: 'border-orange-400/40 text-orange-300',
     expired: 'border-brand-cream/30 text-brand-cream/60',
   };
   return <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${map[status] || 'border-brand-cream/30 text-brand-cream/60'}`}>{status}</span>;
@@ -144,6 +145,7 @@ function PaymentBadge({ status }: { status: string }) {
     failed: 'border-red-400/40 text-red-300',
     refunded: 'border-purple-400/40 text-purple-300',
     partially_refunded: 'border-purple-400/40 text-purple-300',
+    partially_paid: 'border-yellow-400/40 text-yellow-300',
   };
   return <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${map[status] || 'border-brand-cream/30 text-brand-cream/60'}`}>{status.replace('_', ' ')}</span>;
 }

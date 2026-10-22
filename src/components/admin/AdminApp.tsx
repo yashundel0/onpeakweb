@@ -4,7 +4,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useRouter, navigate } from '@/lib/router';
 import AdminDashboard from '@/components/admin/AdminDashboard';
 
-const VALID_SECTIONS = ['overview', 'bookings', 'calendar', 'facilities', 'customers', 'revenue', 'blocked'];
+const VALID_SECTIONS = ['overview', 'bookings', 'calendar', 'facilities', 'customers', 'revenue', 'blocked', 'notifications'];
 
 function sectionFromPath(path: string): string {
   const parts = path.replace(/^\/admin\/?/, '').split('/').filter(Boolean);
@@ -97,6 +97,7 @@ export default function AdminApp() {
             { id: 'customers', label: 'Customers' },
             { id: 'revenue', label: 'Revenue' },
             { id: 'blocked', label: 'Blocked' },
+            { id: 'notifications', label: 'Notifications' },
           ]).map((t) => (
             <button
               key={t.id}

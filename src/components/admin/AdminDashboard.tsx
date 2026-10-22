@@ -7,9 +7,9 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/supabase';
-import { Booking, Location, Court, Sport, Profile, BlockedSlot, Payment } from '@/lib/types';
+import { Booking, Location, Court, Sport, Profile, BlockedSlot, Payment, Notification } from '@/lib/types';
 
-type Tab = 'overview' | 'bookings' | 'calendar' | 'resources' | 'customers' | 'blocked' | 'revenue';
+type Tab = 'overview' | 'bookings' | 'calendar' | 'resources' | 'customers' | 'revenue' | 'blocked' | 'notifications';
 
 type DateFilter = 'all' | 'today' | 'tomorrow' | 'week' | 'custom';
 
@@ -73,6 +73,8 @@ export default function AdminDashboard({ route = 'overview', onClose }: { route?
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [blocked, setBlocked] = useState<BlockedSlot[]>([]);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [notifOpen, setNotifOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -80,7 +82,7 @@ export default function AdminDashboard({ route = 'overview', onClose }: { route?
   const load = useCallback(async () => {
     if (!supabase) { setError('Backend unavailable'); setLoading(false); return; }
     setLoading(true);
-    const [bk, loc, ct, sp, pr, pm, bl] = await Promise.all([
+    const [bk, loc, ct, sp, pr, pm, bl, nf] = await Promise.all([
       supabase.from('bookings').select('*').order('created_at', { ascending: false }).limit(500),
       supabase.from('locations').select('*').order('sort_order'),
       supabase.from('courts').select('*').order('sort_order'),
@@ -88,6 +90,7 @@ export default function AdminDashboard({ route = 'overview', onClose }: { route?
       supabase.from('profiles').select('*').order('created_at', { ascending: false }).limit(500),
       supabase.from('payments').select('*').order('created_at', { ascending: false }).limit(500),
       supabase.from('blocked_slots').select('*').order('date', { ascending: false }).limit(500),
+      supabase.from('notifications').select('*').order('created_at', { ascending: false }).limit(100),
     ]);
     if (bk.error) setError(bk.error.message);
     setBookings((bk.data as Booking[]) || []);
@@ -97,6 +100,7 @@ export default function AdminDashboard({ route = 'overview', onClose }: { route?
     setProfiles((pr.data as Profile[]) || []);
     setPayments((pm.data as Payment[]) || []);
     setBlocked((bl.data as BlockedSlot[]) || []);
+    setNotifications((nf.data as Notification[]) || []);
     setLoading(false);
   }, []);
 
@@ -120,6 +124,10 @@ export default function AdminDashboard({ route = 'overview', onClose }: { route?
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'bookings' }, (payload) => {
         const old = payload.old as Booking;
         setBookings((prev) => prev.filter((b) => b.id !== old.id));
+      })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' }, (payload) => {
+        const newN = payload.new as Notification;
+        setNotifications((prev) => [newN, ...prev]);
       })
       .subscribe();
     return () => { supabase?.removeChannel(channel); };
@@ -152,6 +160,7 @@ export default function AdminDashboard({ route = 'overview', onClose }: { route?
   const pendingCount = bookings.filter((b) => b.booking_status === 'pending').length;
   const cancelledCount = bookings.filter((b) => b.booking_status === 'cancelled').length;
   const activeCourts = courts.filter((c) => c.is_active).length;
+  const unreadNotifs = notifications.filter((n) => !n.is_read).length;
 
   return (
     <div className="fixed inset-0 z-[95] flex items-stretch justify-center bg-brand-deepest/95 backdrop-blur-md" onClick={onClose}>
@@ -171,6 +180,12 @@ export default function AdminDashboard({ route = 'overview', onClose }: { route?
             <button onClick={load} className="flex h-9 w-9 items-center justify-center rounded-lg text-brand-cream/60 hover:bg-brand-mid/40" aria-label="Refresh">
               <RefreshCw className="h-5 w-5" />
             </button>
+            <button onClick={() => setTab('notifications')} className="relative flex h-9 w-9 items-center justify-center rounded-lg text-brand-cream/60 hover:bg-brand-mid/40" aria-label="Notifications">
+              <Bell className="h-5 w-5" />
+              {unreadNotifs > 0 && (
+                <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-brand-accent px-1 text-[10px] font-bold text-brand-deepest">{unreadNotifs > 9 ? '9+' : unreadNotifs}</span>
+              )}
+            </button>
             <button onClick={onClose} className="flex h-9 w-9 items-center justify-center rounded-lg text-brand-cream/60 hover:bg-brand-mid/40" aria-label="Close">
               <X className="h-5 w-5" />
             </button>
@@ -187,6 +202,7 @@ export default function AdminDashboard({ route = 'overview', onClose }: { route?
             { id: 'customers', label: 'Customers', icon: Users },
             { id: 'revenue', label: 'Revenue', icon: TrendingUp },
             { id: 'blocked', label: 'Blocked', icon: Ban },
+            { id: 'notifications', label: `Notifications${unreadNotifs > 0 ? ' (' + unreadNotifs + ')' : ''}`, icon: Bell },
           ] as { id: Tab; label: string; icon: typeof BarChart3 }[]).map((t) => (
             <button
               key={t.id}
@@ -234,6 +250,9 @@ export default function AdminDashboard({ route = 'overview', onClose }: { route?
           )}
           {!loading && tab === 'blocked' && (
             <BlockedTab courts={courts} blocked={blocked} courtName={courtName} fmtDate={fmtDate} onChanged={load} />
+          )}
+          {!loading && tab === 'notifications' && (
+            <NotificationsTab notifications={notifications} onChanged={load} />
           )}
         </div>
       </div>
@@ -1266,6 +1285,106 @@ function BlockedTab({ courts, blocked, courtName, fmtDate, onChanged }: {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Notifications — admin alert panel for new bookings
+// ---------------------------------------------------------------------------
+function NotificationsTab({ notifications, onChanged }: {
+  notifications: Notification[]; onChanged: () => void;
+}) {
+  const [busy, setBusy] = useState<string | null>(null);
+
+  const markRead = async (id: string) => {
+    if (!supabase) return;
+    setBusy(id);
+    const { error } = await supabase.from('notifications').update({ is_read: true }).eq('id', id);
+    setBusy(null);
+    if (error) { alert(error.message); return; }
+    onChanged();
+  };
+
+  const markAllRead = async () => {
+    if (!supabase) return;
+    const unread = notifications.filter((n) => !n.is_read);
+    if (unread.length === 0) return;
+    setBusy('all');
+    const { error } = await supabase.from('notifications').update({ is_read: true }).in('id', unread.map((n) => n.id));
+    setBusy(null);
+    if (error) { alert(error.message); return; }
+    onChanged();
+  };
+
+  const fmtRelative = (ts: string) => {
+    const diff = Date.now() - new Date(ts).getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return 'Just now';
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs}h ago`;
+    const days = Math.floor(hrs / 24);
+    return `${days}d ago`;
+  };
+
+  const unread = notifications.filter((n) => !n.is_read);
+
+  return (
+    <div>
+      <div className="mb-4 flex items-center justify-between">
+        <div>
+          <h3 className="font-display text-sm font-bold uppercase tracking-widest text-brand-cream/60">
+            Notifications {unread.length > 0 && <span className="text-brand-accent">({unread.length} unread)</span>}
+          </h3>
+        </div>
+        {unread.length > 0 && (
+          <button
+            onClick={markAllRead}
+            disabled={busy === 'all'}
+            className="flex items-center gap-1.5 rounded-full border border-brand-mid/30 px-4 py-2 text-xs font-semibold text-brand-cream/70 hover:border-brand-accent/40 hover:text-brand-accent disabled:opacity-60"
+          >
+            {busy === 'all' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+            Mark all as read
+          </button>
+        )}
+      </div>
+
+      {notifications.length === 0 ? (
+        <EmptyState>No notifications yet. New bookings will appear here in real time.</EmptyState>
+      ) : (
+        <div className="space-y-2">
+          {notifications.map((n) => (
+            <div
+              key={n.id}
+              className={`flex items-start gap-3 rounded-2xl border p-4 transition-colors ${
+                n.is_read ? 'border-brand-mid/15 bg-brand-deepest/30' : 'border-brand-accent/30 bg-brand-accent/5'
+              }`}
+            >
+              <div className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${n.is_read ? 'bg-brand-mid/30 text-brand-cream/40' : 'bg-brand-accent/15 text-brand-accent'}`}>
+                <Bell className="h-4 w-4" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <p className={`text-sm font-bold ${n.is_read ? 'text-brand-cream/60' : 'text-brand-cream'}`}>{n.title}</p>
+                  {!n.is_read && <span className="h-2 w-2 rounded-full bg-brand-accent" />}
+                </div>
+                <p className="mt-0.5 text-xs text-brand-cream/60">{n.message}</p>
+                <p className="mt-1 text-[10px] text-brand-cream/30">{fmtRelative(n.created_at)}</p>
+              </div>
+              {!n.is_read && (
+                <button
+                  onClick={() => markRead(n.id)}
+                  disabled={busy === n.id}
+                  className="shrink-0 rounded-full border border-brand-mid/30 px-3 py-1 text-[11px] font-semibold text-brand-cream/60 hover:border-brand-accent/40 hover:text-brand-accent disabled:opacity-60"
+                >
+                  {busy === n.id ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Mark read'}
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

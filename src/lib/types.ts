@@ -121,6 +121,17 @@ export interface Payment {
   created_at: string;
 }
 
+export interface Notification {
+  id: string;
+  user_id: string | null;
+  booking_id: string | null;
+  type: string;
+  title: string;
+  message: string;
+  is_read: boolean;
+  created_at: string;
+}
+
 export interface PromoCode {
   id: string;
   code: string;
